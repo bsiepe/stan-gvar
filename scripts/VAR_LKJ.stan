@@ -30,6 +30,8 @@ transformed parameters{
   //matrix[K,K] Beta = Beta_raw * sigma_Beta + mu_Beta;
   
   // Precision matrix
+  // BS: So this is just the Cholesky decomposition right?
+  // and the pre-multiplication scales it?
   matrix[K,K] Theta = inverse_spd(
     diag_pre_multiply(sigma_theta, L_Theta) * 
     diag_pre_multiply(sigma_theta, L_Theta)'
@@ -49,15 +51,16 @@ transformed parameters{
 ////////////////////////////////////////////////////////////////////////////////
 model {
   // Priors
-  to_vector(Beta_raw) ~ std_normal();
+  to_vector(Beta_raw) ~ std_normal();    // prior on Beta
   // mu_Beta          ~ student_t(3,0,2);
   // sigma_Beta       ~ student_t(3,0,2);
-  L_Theta             ~ lkj_corr_cholesky(1);
-  sigma_theta         ~ student_t(3,0,2);
+  L_Theta             ~ lkj_corr_cholesky(1);  // prior on Cholesky factor
+  sigma_theta         ~ student_t(3,0,2);   // prior on sigma_theta
   // Priors on partial correlations
   for(i in 1:K){
     for(j in 1:K){
       if(i < j){
+        // BS: I think this maps beta to the unit interval?
         target+= beta_proportion_lpdf(
           Rho[i,j] / 2 + 0.5 | prior_Rho_loc[i,j], prior_Rho_scale[i,j]);
         }
