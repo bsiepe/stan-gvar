@@ -27,7 +27,8 @@ packages <- c(
   "sjlabelled",
   "tsnet",
   "BGGM",
-  "graphicalVAR"
+  "graphicalVAR",
+  "mvtnorm"
 )
 #remotes::install_github("donaldRwilliams/BGGM")
 #devtools::install_github("bsiepe/tsnet")
@@ -115,7 +116,7 @@ model_name <- "VAR_loglik"
 # Compile model
 var_lkj_model <- cmdstanr::cmdstan_model(
   stan_file = here("scripts", paste0(model_name, ".stan")),
-  pedantic = TRUE#, 
+  pedantic = TRUE#,   
   #quiet = FALSE
   )
 # number of MCMC chains
@@ -241,18 +242,19 @@ bayesplot::ppc_intervals(gvar_mod$PCC %>% as.vector(),draws_rho)
 ```{r}
 source(here("functions.R"))
 draws_sigma <- var_lkj_fit$draws("Sigma") %>% as_draws_matrix()
-
 log_lik_0 <-
   log_lik_gVAR(Y = Y,
                draws_beta = draws_beta,
-               draws_sigma = draws_sigma) %>% array()
+               draws_sigma = draws_sigma, 
+               n_cores = 4)
 
 chain_ids <- var_lkj_fit$draws("Beta") %>% 
   as_draws_df() %>% 
   select(.chain) %>% unlist()
 
-relative_eff(matrix(log_lik_0, nrow = 1), chain_ids)
-loo(log_lik_0, r_eff = )
+loo_0 <- loo(log_lik_0, r_eff = relative_eff(log_lik_0, chain_ids)
+)
+
 ```
 
 
@@ -276,6 +278,53 @@ net_3 <- BGGM::var_estimate(data_3[,-1],
                             beta_sd = 0.5,
                             iter = 50000)
 ```
+```{r}
+data_1 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200, 
+                                          beta = gvar_mod$beta,
+                                          kappa = gvar_mod$kappa)
+
+data_2 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200, 
+                                          beta = gvar_mod$beta,
+                                          kappa = gvar_mod$kappa)
+
+source(here("functions.R"))
+priors <- list(
+  prior_Rho_loc = prior_Rho_loc,
+  prior_Rho_scale = prior_Rho_scale,
+  prior_beta_loc =  prior_beta_loc,
+  prior_beta_scale = prior_beta_scale
+)
+```
+
+```{r message=FALSE}
+net_1_fit <- fit_gVAR_stan(data = data_1, priors = priors)
+net_2_fit <- fit_gVAR_stan(data = data_2, priors = priors)
+```
+
+```{r}
+source(here("functions.R"))
+
+draws_beta <- net_1_fit$draws("Beta") %>% as_draws_matrix()
+draws_sigma <- net_1_fit$draws("Sigma") %>% as_draws_matrix()
+ 
+net_1_data_1_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_1)
+net_1_data_2_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_2)
+net_2_data_2_loo <- loo_gVAR(stan_fit = net_2_fit, data = data_2)
+net_2_data_1_loo <- loo_gVAR(stan_fit = net_2_fit, data = data_1)
+```
+
+```{r}
+plot(net_1_data_2_loo)
+plot(net_2_data_1_loo)
+
+loo_compare(net_1_data_1_loo, net_1_data_2_loo)
+loo_compare(net_2_data_2_loo, net_2_data_1_loo)
+```
+
+```{r}
+bridgesampling::bridge_sampler()
+```
+
 
 
 
@@ -287,6 +336,8 @@ net_1$fit$beta
 draws_beta %>% View()
 
 ```
+
+
 
 
 
