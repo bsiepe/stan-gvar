@@ -94,7 +94,7 @@ fit_gVAR_stan <- function(data, priors, backend = "rstan") {
   # number of MCMC chains
   n_chains <- 4
   # Choose model to fit
-  model_name <- "VAR_loglik"
+  model_name <- "VAR_lkj"
   
   if (backend == "rstan") {
     # Compile model

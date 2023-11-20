@@ -32,21 +32,22 @@ transformed parameters{
   // Precision matrix
   // BS: So this is just the Cholesky decomposition right?
   // and the pre-multiplication scales it?
-  matrix[K,K] Theta = inverse_spd(
-    diag_pre_multiply(sigma_theta, L_Theta) * 
-    diag_pre_multiply(sigma_theta, L_Theta)'
-    ); 
-    // Partial correlation matrix
-    matrix[K,K] Rho;
+  matrix[K,K] Sigma = diag_pre_multiply(sigma_theta, L_Theta) * 
+                      diag_pre_multiply(sigma_theta, L_Theta)'; 
+  // Partial correlation matrix
+  matrix[K,K] Rho;
+  {
+    matrix[K,K] Theta = inverse_spd(Sigma); 
     for(i in 1:K){
       for(j in 1:K){
         if(i != j){
           Rho[i,j] = -Theta[i,j] / sqrt(Theta[i,i] * Theta[j,j]);
         }else{
           Rho[i,j] = 0;
-        }
-      }
-    }
+        } // end else
+      } // end j
+    } // end i
+  }
 }
 ////////////////////////////////////////////////////////////////////////////////
 model {
@@ -67,13 +68,23 @@ model {
       }
     }
   {
-    matrix[K, K] Sigma = diag_pre_multiply(sigma_theta, L_Theta);
+    matrix[K, K] Sigma_chol = diag_pre_multiply(sigma_theta, L_Theta);
     for(t in 2:T){
       // BS: What about intercept?
       vector[K] mu = Beta * Y[t-1,];
-      Y[t,] ~ multi_normal_cholesky(mu, Sigma);
+      Y[t,] ~ multi_normal_cholesky(mu, Sigma_chol);
     }
   }
 }
 ////////////////////////////////////////////////////////////////////////////////
-generated quantities{}
+generated quantities{
+  vector[T-1] log_lik;
+  {
+    matrix[K, K] Sigma_chol = diag_pre_multiply(sigma_theta, L_Theta);
+    for(t in 2:T){
+      // BS: What about intercept?
+      vector[K] mu = Beta * Y[t-1,];
+      log_lik[t-1] = multi_normal_cholesky_lpdf(Y[t, ] | mu, Sigma_chol);
+    }
+  }
+}

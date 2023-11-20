@@ -113,7 +113,7 @@ stan_data <-
        prior_Beta_scale = prior_Beta_scale
        )
 # Choose model to fit
-model_name <- "VAR_loglik"
+model_name <- "VAR_lkj"
 # number of MCMC chains
 n_chains <- 4
 ```
