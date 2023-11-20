@@ -84,8 +84,8 @@ prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
 # prior_Rho_scale <- matrix(sqrt(.5), nrow = K, ncol = K) # sqrt(mu) corresponds to uniform distribution
 prior_Rho_scale <- matrix(.4, nrow = K, ncol = K) # bit more regularization
 
-prior_beta_loc <- matrix(0, nrow = K, ncol = K)
-prior_beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
+prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
 ```
 
 #### Plot prior choices for scaled beta
@@ -108,8 +108,8 @@ stan_data <-
        Y = as.matrix(Y),
        prior_Rho_loc = prior_Rho_loc,
        prior_Rho_scale = prior_Rho_scale,
-       prior_beta_loc = prior_beta_loc,
-       prior_beta_scale = prior_beta_scale
+       prior_Beta_loc = prior_Beta_loc,
+       prior_Beta_scale = prior_Beta_scale
        )
 # Choose model to fit
 model_name <- "VAR_loglik"
@@ -195,8 +195,7 @@ medians_beta <-
   matrix(., nrow = K, byrow = FALSE)
 cor.plot(medians_beta)
 
-cor.plot(gvar_mod$beta
-)
+cor.plot(gvar_mod$beta)
 ```
 
 ### Difference in Betas
@@ -240,8 +239,9 @@ bayesplot::ppc_intervals(gvar_mod$PCC %>% as.vector(),draws_rho)
 
 # Loglik extraction
 ```{r}
-source(here("functions.R"))
+source(here("scripts","functions.R"))
 draws_sigma <- var_lkj_fit$draws("Sigma") %>% as_draws_matrix()
+
 log_lik_0 <-
   log_lik_gVAR(Y = Y,
                draws_beta = draws_beta,
@@ -271,28 +271,28 @@ data_3 <- subset(data, id == 3)
 # (should perform detrending etc. in a real use case)
 net_1 <- BGGM::var_estimate(data_1[,-1],
                             rho_sd = 0.25, 
-                            beta_sd = 0.5,
+                            Beta_sd = 0.5,
                             iter = 50000)
 net_3 <- BGGM::var_estimate(data_3[,-1],
                             rho_sd = 0.25, 
-                            beta_sd = 0.5,
+                            Beta_sd = 0.5,
                             iter = 50000)
 ```
+
 ```{r}
-data_1 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200, 
-                                          beta = gvar_mod$beta,
-                                          kappa = gvar_mod$kappa)
+data_1 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
+                                                    beta = gvar_mod$beta,
+                                                    kappa = gvar_mod$kappa)
 
-data_2 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200, 
-                                          beta = gvar_mod$beta,
-                                          kappa = gvar_mod$kappa)
-
-source(here("functions.R"))
+data_2 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
+                                                    beta = gvar_mod$beta,
+                                                    kappa = gvar_mod$kappa)
+source(here("scripts", "functions.R"))
 priors <- list(
   prior_Rho_loc = prior_Rho_loc,
   prior_Rho_scale = prior_Rho_scale,
-  prior_beta_loc =  prior_beta_loc,
-  prior_beta_scale = prior_beta_scale
+  prior_Beta_loc =  prior_Beta_loc,
+  prior_Beta_scale = prior_Beta_scale
 )
 ```
 
@@ -302,19 +302,18 @@ net_2_fit <- fit_gVAR_stan(data = data_2, priors = priors)
 ```
 
 ```{r}
-source(here("functions.R"))
-
-draws_beta <- net_1_fit$draws("Beta") %>% as_draws_matrix()
-draws_sigma <- net_1_fit$draws("Sigma") %>% as_draws_matrix()
- 
-net_1_data_1_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_1)
-net_1_data_2_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_2)
-net_2_data_2_loo <- loo_gVAR(stan_fit = net_2_fit, data = data_2)
-net_2_data_1_loo <- loo_gVAR(stan_fit = net_2_fit, data = data_1)
+source(here("scripts","functions.R"))
+cores <- parallel::detectCores()-4
+net_1_data_1_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_1, n_cores = cores)
+net_1_data_2_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_2, n_cores = cores)
+net_2_data_2_loo <- loo_gVAR(stan_fit = net_2_fit, data = data_2, n_cores = cores)
+net_2_data_1_loo <- loo_gVAR(stan_fit = net_2_fit, data = data_1, n_cores = cores)
 ```
 
 ```{r}
+plot(net_1_data_1_loo)
 plot(net_1_data_2_loo)
+plot(net_2_data_2_loo)
 plot(net_2_data_1_loo)
 
 loo_compare(net_1_data_1_loo, net_1_data_2_loo)
@@ -322,7 +321,22 @@ loo_compare(net_2_data_2_loo, net_2_data_1_loo)
 ```
 
 ```{r}
-bridgesampling::bridge_sampler()
+
+    #Transform the cmdstanr object as you have done 
+stanfit <- rstan::read_stan_csv(net_1_fit$output_files())
+    #Compile the same model (with the correct data) through rstan, but do not sample IIRC, set iter = 0 or chains = 0).
+ 
+new_model <- rstan::stan_model(file = here("scripts", paste0(model_name, ".stan")))
+    
+   
+# Call bridgesampling() with both models: 
+  
+  bridgesampling(samples = stanfit , stanfit_model = new_model)
+
+
+
+bridgesampling::bridge_sampler(
+  samples = as_mcmc.list(net_1_fit))
 ```
 
 
@@ -356,12 +370,12 @@ var_lkj_fit_vb$time()$total
 ```
 
 ```{r}
-medians_beta_vb <-
+medians_Beta_vb <-
   var_lkj_fit_vb$summary("Beta") %>% 
   dplyr::select(median) %>% 
   unlist() %>% 
   round(2)
-plot(medians_beta_vb, medians_beta %>% as.vector())
+plot(medians_Beta_vb, medians_beta %>% as.vector())
 abline(coef = c(0,1))
 ```
 
@@ -379,10 +393,10 @@ abline(coef = c(0,1))
 ```
 
 ```{r}
-draws_beta_vb <- var_lkj_fit_vb$draws("Beta") %>% as_draws_matrix()
+draws_Beta_vb <- var_lkj_fit_vb$draws("Beta") %>% as_draws_matrix()
 bayesplot::ppc_intervals(gvar_mod$beta %>% as.vector(),draws_beta)+
     ylim(c(-1,1))
-bayesplot::ppc_intervals(gvar_mod$beta %>% as.vector(),draws_beta_vb)+
+bayesplot::ppc_intervals(gvar_mod$beta %>% as.vector(),draws_Beta_vb)+
     ylim(c(-1,1))
 ```
 
