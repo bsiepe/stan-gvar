@@ -23,8 +23,6 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
   #   select(.chain) %>% unlist()
   
   # prepare matrices from draws
-  draws_beta <- as_draws_matrix(draws_beta)
-  draws_sigma <- as_draws_matrix(draws_sigma)
   Beta <- draws2list(draws_beta)
   Sigma <- draws2list(draws_sigma)
   # number of iterations
@@ -39,7 +37,8 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
   future::plan("multisession", workers = n_cores)
   # progress bar
   p <- progressr::progressor(along = 1:n_iter)
-  progressr::with_progress(# loop over iteraions
+  # loop over iteraions
+  progressr::with_progress(
     log_lik_list <- furrr::future_map(
       .x = 1:n_iter,
       .f = function(n) {
@@ -72,7 +71,7 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
 }
 
 #------------------------------------------------------------------------------>
-fit_gVAR_stan <- function(data, priors) {
+fit_gVAR_stan <- function(data, priors, backend = "rstan") {
   # Specify Priors
   prior_Rho_loc <- priors[["prior_Rho_loc"]]
   prior_Rho_scale <- priors[["prior_Rho_scale"]]
@@ -83,7 +82,7 @@ fit_gVAR_stan <- function(data, priors) {
   K <- ncol(data)
   n_t <- nrow(data)
   
-  list(
+  stan_data <- list(
     K = K,
     "T" = n_t,
     Y = as.matrix(Y),
@@ -92,45 +91,84 @@ fit_gVAR_stan <- function(data, priors) {
     prior_Beta_loc = prior_Beta_loc,
     prior_Beta_scale = prior_Beta_scale
   )
-  # Choose model to fit
-  model_name <- "VAR_loglik"
-  # Compile model
-  stan_model <-
-    cmdstanr::cmdstan_model(stan_file = here("scripts", paste0(model_name, ".stan")),
-                            pedantic = TRUE)
   # number of MCMC chains
   n_chains <- 4
-  # Run sampler
-  stan_fit <- stan_model$sample(
-    data = stan_data,
-    seed = 35032,
-    chains = n_chains,
-    parallel_chains = n_chains,
-    iter_warmup = 500,
-    iter_sampling = 500,
-    refresh = 500,
-    thin = 1,
-    adapt_delta = .8,
-    init = .1
-  )
+  # Choose model to fit
+  model_name <- "VAR_loglik"
+  
+  if (backend == "rstan") {
+    # Compile model
+    stan_model <- rstan::stan_model(file = here("scripts", paste0(model_name, ".stan")))
+    # Run sampler
+    stan_fit <- rstan::sampling(
+      object = stan_model,
+      data = stan_data,
+      pars = c("Beta_raw"),
+      include = FALSE,
+      seed = 2023,
+      chains = n_chains,
+      cores = n_chains,
+      iter = 1000,
+      warmup = 500,
+      refresh = 500,
+      thin = 1,
+      init = .1,
+      control = list(adapt_delta = .8)
+    )
+  } else{
+    # Compile model
+    stan_model <-
+      cmdstanr::cmdstan_model(stan_file = here("scripts", paste0(model_name, ".stan")),
+                              pedantic = TRUE)
+    # Run sampler
+    stan_fit <- stan_model$sample(
+      data = stan_data,
+      seed = 35032,
+      chains = n_chains,
+      parallel_chains = n_chains,
+      iter_warmup = 500,
+      iter_sampling = 500,
+      refresh = 500,
+      thin = 1,
+      adapt_delta = .8,
+      init = .1
+    )
+  }
   return(stan_fit)
 }
 
 loo_gVAR <- function(stan_fit, data, n_cores = 1) {
-
-  log_lik <-
-    log_lik_gVAR(
-      Y = data %>% apply(., 2, scale),
-      draws_beta = stan_fit$draws("Beta"),
-      draws_sigma = stan_fit$draws("Sigma"),
-      n_cores = n_cores
-    )
-  
-  chain_ids <- stan_fit$draws("Beta") %>%
-    as_draws_df() %>%
-    select(.chain) %>% unlist()
-  
+  c <- class(stan_fit)
+  if (attr(c, "package") == "rstan") {
+    log_lik <-
+      log_lik_gVAR(
+        Y = data %>% apply(., 2, scale),
+        draws_beta = posterior::as_draws_matrix(rstan::extract(
+          stan_fit, pars = "Beta", permuted = FALSE
+        )),
+        draws_sigma = posterior::as_draws_matrix(rstan::extract(
+          stan_fit, pars = "Sigma", permuted = FALSE
+        )),
+        n_cores = n_cores
+      )
+    chain_ids <-
+      rstan::extract(stan_fit, pars = "Beta", permuted = FALSE) %>%
+      posterior::as_draws_df() %>%
+      dplyr::select(.chain) %>%
+      unlist()
+  } else{
+    log_lik <-
+      log_lik_gVAR(
+        Y = data %>% apply(., 2, scale),
+        draws_beta = posterior::as_draws_matrix(stan_fit$draws("Beta")),
+        draws_sigma = posterior::as_draws_matrix(stan_fit$draws("Sigma")),
+        n_cores = n_cores
+      )
+    chain_ids <- stan_fit$draws("Beta") %>%
+      posterior::as_draws_df() %>%
+      dplyr::select(.chain) %>%
+      unlist()
+  }
   loo <- loo::loo(log_lik, r_eff = relative_eff(log_lik, chain_ids))
-  
   return(loo)
 }

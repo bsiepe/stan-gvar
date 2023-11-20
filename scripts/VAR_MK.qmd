@@ -113,17 +113,17 @@ stan_data <-
        )
 # Choose model to fit
 model_name <- "VAR_loglik"
+# number of MCMC chains
+n_chains <- 4
+```
+
+```{r sampling, message=FALSE, eval=FALSE}
 # Compile model
 var_lkj_model <- cmdstanr::cmdstan_model(
   stan_file = here("scripts", paste0(model_name, ".stan")),
   pedantic = TRUE#,   
   #quiet = FALSE
   )
-# number of MCMC chains
-n_chains <- 4
-```
-
-```{r sampling, message=FALSE}
 # Run sampler
 var_lkj_fit <- var_lkj_model$sample(
   data = stan_data,
@@ -139,6 +139,26 @@ var_lkj_fit <- var_lkj_model$sample(
 )
 # time to fit
 var_lkj_fit$time()$total
+```
+
+```{r}
+# Compile model
+var_lkj_model <- rstan::stan_model(
+  file = here("scripts", paste0(model_name, ".stan")))
+# Run sampler
+var_lkj_fit <- rstan::sampling(
+  object = var_lkj_model,
+  data = stan_data,
+  seed = 2023,
+  chains = n_chains,
+  cores = n_chains,
+  iter = 1000,
+  warmup = 500,
+  refresh = 500,
+  thin = 1,
+  init = .1,
+  control = list(adapt_delta = .8)
+)
 ```
 
 ## Effective sample size (ESS) & Rhat Plots
@@ -269,17 +289,68 @@ data_3 <- subset(data, id == 3)
 
 # Estimate networks
 # (should perform detrending etc. in a real use case)
-net_1 <- BGGM::var_estimate(data_1[,-1],
+net_1_bggm <- BGGM::var_estimate(data_1[,-1],
                             rho_sd = 0.25, 
                             Beta_sd = 0.5,
                             iter = 50000)
-net_3 <- BGGM::var_estimate(data_3[,-1],
+net_3_bggm <- BGGM::var_estimate(data_3[,-1],
                             rho_sd = 0.25, 
                             Beta_sd = 0.5,
                             iter = 50000)
+
+```
+
+### Specify Priors
+```{r}
+Y_1 <- data_1[,-1] %>% apply(., 2, scale)
+K <- ncol(Y_1)
+n_t <- nrow(Y_1)
+prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
+prior_Rho_scale <- matrix(.4, nrow = K, ncol = K)
+prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
+
+priors <- list(
+  prior_Rho_loc = prior_Rho_loc,
+  prior_Rho_scale = prior_Rho_scale,
+  prior_Beta_loc =  prior_Beta_loc,
+  prior_Beta_scale = prior_Beta_scale
+)
+
+net_1_stan <- fit_gVAR_stan(data = Y_1, priors = priors)
+
+
+Y_3 <- data_3[,-1] %>% apply(., 2, scale)
+K <- ncol(Y_3)
+n_t <- nrow(Y_3)
+prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
+prior_Rho_scale <- matrix(.4, nrow = K, ncol = K)
+prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
+
+net_1_stan <- fit_gVAR_stan(data = Y_3, priors = priors)
+```
+
+Posterior samples are in a slightly different format when we use the BGGM package
+in BGGM, they are in a tensor format. I think this will be the most efficient format for the test.
+
+```{r}
+net_1$fit$beta
+draws_beta %>% View()
+
 ```
 
 ```{r}
+tsnet::
+```
+
+
+### Compare Models for same True Parameters
+```{r}
+gvar_mod <- graphicalVAR::randomGVARmodel(Nvar = 8,
+                              probKappaEdge = .3,
+                              probBetaEdge = .2)
+
 data_1 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
                                                     beta = gvar_mod$beta,
                                                     kappa = gvar_mod$kappa)
@@ -287,6 +358,12 @@ data_1 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
 data_2 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
                                                     beta = gvar_mod$beta,
                                                     kappa = gvar_mod$kappa)
+K <- ncol(data_1)
+prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
+prior_Rho_scale <- matrix(.4, nrow = K, ncol = K)
+prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
+
 source(here("scripts", "functions.R"))
 priors <- list(
   prior_Rho_loc = prior_Rho_loc,
@@ -303,6 +380,7 @@ net_2_fit <- fit_gVAR_stan(data = data_2, priors = priors)
 
 ```{r}
 source(here("scripts","functions.R"))
+
 cores <- parallel::detectCores()-4
 net_1_data_1_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_1, n_cores = cores)
 net_1_data_2_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_2, n_cores = cores)
@@ -315,50 +393,77 @@ plot(net_1_data_1_loo)
 plot(net_1_data_2_loo)
 plot(net_2_data_2_loo)
 plot(net_2_data_1_loo)
+```
 
+```{r}
 loo_compare(net_1_data_1_loo, net_1_data_2_loo)
 loo_compare(net_2_data_2_loo, net_2_data_1_loo)
 ```
 
-```{r}
-
-    #Transform the cmdstanr object as you have done 
-stanfit <- rstan::read_stan_csv(net_1_fit$output_files())
-    #Compile the same model (with the correct data) through rstan, but do not sample IIRC, set iter = 0 or chains = 0).
- 
-new_model <- rstan::stan_model(file = here("scripts", paste0(model_name, ".stan")))
-    
-   
-# Call bridgesampling() with both models: 
-  
-  bridgesampling(samples = stanfit , stanfit_model = new_model)
-
-
-
-bridgesampling::bridge_sampler(
-  samples = as_mcmc.list(net_1_fit))
-```
-
-
-
-
-Posterior samples are in a slightly different format when we use the BGGM package
-in BGGM, they are in a tensor format. I think this will be the most efficient format for the test.
 
 ```{r}
-net_1$fit$beta
-draws_beta %>% View()
+net_1_data_1_logml <- bridgesampling::bridge_sampler(
+  samples = net_1_fit,
+  stan_fit = net_1_fit
+)$logml
+
+net_1_data_2_logml <- bridgesampling::bridge_sampler(
+  samples = net_1_fit,
+  stan_fit = net_1_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_2
+)$logml
+
+net_2_data_2_logml <- bridgesampling::bridge_sampler(
+  samples = net_2_fit,
+  stan_fit = net_2_fit
+)$logml
+
+net_2_data_1_logml <- bridgesampling::bridge_sampler(
+  samples = net_2_fit,
+  stan_fit = net_2_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1
+)$logml
 
 ```
 
+```{r}
+bridgesampling::bayes_factor(net_1_data_1_logml, net_1_data_2_logml)
+bridgesampling::bayes_factor(net_2_data_2_logml, net_2_data_1_logml)
+```
+
+
+```{r}
+(net_1_data_1_loo$elpd - net_1_data_1_logml) - (net_1_data_2_loo$elpd - net_1_data_2_logml) 
+```
+
+
+```{r}
+var_lkj_draws <- rstan::extract(var_lkj_fit)
+var_lkj_LML <- bridgesampling::bridge_sampler(
+  samples = var_lkj_fit,
+  stan_fit = var_lkj_fit,
+  method = "warp3"
+)
+bridgesampling::logml(var_lkj_LML)
+var_lkj_LML$logml
+```
 
 
 
 
 # Compare Variational Inference
 ```{r}
+# Compile model
+var_lkj_model <- cmdstanr::cmdstan_model(
+  stan_file = here("scripts", paste0(model_name, ".stan")),
+  pedantic = TRUE#,   
+  #quiet = FALSE
+  )
 # Run variational
 var_lkj_fit_vb <- var_lkj_model$variational(
+  algorithm = "fullrank",
   data = stan_data,
   seed = 2023,
   tol_rel_obj = .001,

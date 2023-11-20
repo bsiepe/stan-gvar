@@ -7,8 +7,8 @@ data {
   //int<lower=0> N; // number of 
   array[T] vector[K] Y; // responses
   // Priors
-  matrix[K,K] prior_beta_loc; // locations for priors on Beta matrix
-  matrix[K,K] prior_beta_scale; // scales for priors on Beta matrix
+  matrix[K,K] prior_Beta_loc; // locations for priors on Beta matrix
+  matrix[K,K] prior_Beta_scale; // scales for priors on Beta matrix
   matrix[K,K] prior_Rho_loc; // locations for priors on partial correlations
   matrix[K,K] prior_Rho_scale; // scales for priors on partial correlations
 }
@@ -26,7 +26,7 @@ parameters {
 ////////////////////////////////////////////////////////////////////////////////
 transformed parameters{
   // Non-centered parameterization for Beta matrix
-  matrix[K,K] Beta = Beta_raw .* prior_beta_scale + prior_beta_loc;
+  matrix[K,K] Beta = Beta_raw .* prior_Beta_scale + prior_Beta_loc;
   //matrix[K,K] Beta = Beta_raw * sigma_Beta + mu_Beta;
   
   // Precision matrix
