@@ -1,0 +1,25 @@
+ 
+DATA:	    FILE = mplus_gvar_example.dat;    ! data file (should be in same folder)
+
+VARIABLE:	NAMES = V1 V2 V3 V4;          ! providing names to the variables 
+            USEVARIABLES = V1 V2 V3 V4;   ! select variables for the analysis
+	        LAGGED = V1(1) V2(1) V3(1) V4(1);  ! creating first-order
+                                    ! lagged observed variables                                    
+            MISSING = *;            ! missing value code
+
+ANALYSIS:	ESTIMATOR = BAYES;      ! set estimator (must be Bayes for DSEM) 
+	        PROCESSORS = 8;         ! using 2 processors
+	        BITERATIONS = (4000);   ! choose number of iterations;
+                                    ! minimum is now 2000; will be more if 
+                                    ! the convergence criterion indicates
+                                    ! convergence was not reached
+
+MODEL:	    V1 ON V1&1 V2&1 V3&1 V4&1;        
+            V2 ON V1&1 V2&1 V3&1 V4&1;
+            V3 ON V1&1 V2&1 V3&1 V4&1;
+            V4 ON V1&1 V2&1 V3&1 V4&1;
+
+OUTPUT:	    TECH1 TECH8;            ! asking additional output
+SAVEDATA: BPARAMETERS IS additional_mplus.dat; ! saving posterior samples
+PLOT:	    TYPE = PLOT3;           ! asking for plots
+

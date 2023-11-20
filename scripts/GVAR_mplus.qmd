@@ -1,0 +1,117 @@
+---
+title: "GVAR_mplus.qmd"
+format: html
+editor: source
+author: Björn S. Siepe
+---
+
+# Preparation
+Load relevant packages
+```{r}
+library(graphicalVAR)
+library(here)
+library(tidyverse)
+library(MplusAutomation)
+set.seed(35037)
+```
+
+Create dataset to feed into MPlus:
+```{r}
+# Additionally, use data from our preprint
+l_graphs <- readRDS(here("data", "l_graphs.rds"))
+
+# Choose graph 6
+gvar_mod <- l_graphs$graph6
+
+# Add partial correlations
+gvar_mod$PCC <- -cov2cor(gvar_mod$kappa)
+diag(gvar_mod$PCC) <- 0
+
+# Simulate data
+gvar_dat <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = 200, 
+                                          beta = gvar_mod$beta[1:4, 1:4],
+                                          kappa = gvar_mod$kappa[1:4, 1:4]))
+gvar_mod$beta[1:4, 1:4]
+
+```
+
+
+# Prepare MPlus
+```{r}
+# Prepare MPlus data via MPlusautomation
+# keep all variables
+prepareMplusData(
+  gvar_dat,
+  filename = here("scripts/mplus_gvar_example.dat")) # scripts folder for Mplus
+```
+
+Create MPlus input text file
+```{r}
+# Create MPlus input text file
+mplus_model <- " 
+DATA:	    FILE = mplus_gvar_example.dat;    ! data file (should be in same folder)
+
+VARIABLE:	NAMES = V1 V2 V3 V4;          ! providing names to the variables 
+            USEVARIABLES = V1 V2 V3 V4;   ! select variables for the analysis
+	        LAGGED = V1(1) V2(1) V3(1) V4(1);  ! creating first-order
+                                    ! lagged observed variables                                    
+            MISSING = *;            ! missing value code
+
+ANALYSIS:	ESTIMATOR = BAYES;      ! set estimator (must be Bayes for DSEM) 
+	        PROCESSORS = 8;         ! using 2 processors
+	        BITERATIONS = (4000);   ! choose number of iterations;
+                                    ! minimum is now 2000; will be more if 
+                                    ! the convergence criterion indicates
+                                    ! convergence was not reached
+
+MODEL:	    V1 ON V1&1 V2&1 V3&1 V4&1;        
+            V2 ON V1&1 V2&1 V3&1 V4&1;
+            V3 ON V1&1 V2&1 V3&1 V4&1;
+            V4 ON V1&1 V2&1 V3&1 V4&1;
+
+OUTPUT:	    TECH1 TECH8;            ! asking additional output
+SAVEDATA: BPARAMETERS IS additional_mplus.dat; ! saving posterior samples
+PLOT:	    TYPE = PLOT3;           ! asking for plots
+"
+# Write MPlus input file
+writeLines(mplus_model, here("scripts/mplus_gvar_example.inp"))
+
+```
+
+Now execute the model
+```{r}
+# Now execute the model
+# use the syntax above for the relevant model
+# mplusModeler(TITLE = "GVAR Example",
+#              DATA = "mplus_gvar_example.dat",
+#              OUTPUT = "mplus_gvar_output.out",
+#              MODEL = "V1 ON V1&1 V2&1 V3&1 V4&1;
+#                       y2 ON V1&1 V2&1 V3&1 V4&1;
+#                       y3 ON V1&1 V2&1 V3&1 V4&1;
+#                       y4 ON V1&1 V2&1 V3&1 V4&1;"
+#              RUNS = 1,
+#              PROCESSORS = 8,
+#              BURNIN = 2000,
+#              SAMPLES = 2000,
+#              CHAINS = 4,
+#              SEED = 35037,
+#              )
+
+
+runModels(here("scripts/mplus_gvar_example.inp"), 
+                       showOutput=TRUE)
+```
+
+
+Extract posterior samples
+```{r}
+# Extract posterior samples
+mplus_res <- importMPlus(here("scripts/mplus_gvar_example.out"))
+```
+
+
+
+
+
+
+
