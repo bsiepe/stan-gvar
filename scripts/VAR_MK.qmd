@@ -35,6 +35,7 @@ packages <- c(
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(packages, update = F, character.only = T)
 
+source(here("scripts","functions.R"))
 set.seed(35037)
 ```
 
@@ -284,8 +285,8 @@ Compare data structures of BGGM and the stan model/posterior package
 ```{r}
 # Load data of two individuals
 data <- BGGM::ifit
-data_1 <- subset(data, id == 1)
-data_3 <- subset(data, id == 3)
+data_1 <- subset(data, id == 1) %>% remove_missing()
+data_3 <- subset(data, id == 3) %>% remove_missing()
 
 # Estimate networks
 # (should perform detrending etc. in a real use case)
@@ -328,7 +329,7 @@ prior_Rho_scale <- matrix(.4, nrow = K, ncol = K)
 prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
 prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
 
-net_1_stan <- fit_gVAR_stan(data = Y_3, priors = priors)
+net_3_stan <- fit_gVAR_stan(data = Y_3, priors = priors)
 ```
 
 Posterior samples are in a slightly different format when we use the BGGM package
@@ -341,7 +342,9 @@ draws_beta %>% View()
 ```
 
 ```{r}
-tsnet::
+(net_1_bggm)
+
+
 ```
 
 
