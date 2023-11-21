@@ -1,0 +1,91 @@
+---
+title: "bayes-factor-ideas"
+format: html
+editor: visual
+---
+
+
+# Idea 1: Bayes Factor Cross-Check
+
+**Idea:** Use loglikelihood of cross-check to compute Bayes factor
+
+**Advantages:**
+
+- evidence for the Null
+- easy to implement
+
+**Issues:**
+
+- double comparison needed
+- needs access to model, not just posterior samples
+
+# Idea 2: LOO Cross-Check
+
+**Idea:** Use LOO of cross-check to compare models
+
+**Advantages:**
+
+- easy to implement
+
+**Issues:**
+
+- double comparison needed
+- needs access to model, not just posterior samples
+
+# Idea 3: Post Hoc Model Comparison
+
+**Idea:** Compare models (like t-Test) where parameters of interest are fixed to be equal vs. not
+
+**Advantages:**
+
+- easy to implement
+- no double comparison needed
+- works on posterior samples only?
+
+**Issues:**
+
+- requires "new model" for the model comparison
+
+# Idea 4: Bayes Factor for multiple equality constraints
+
+**Idea:** Fix some or all parameters to be equal, create Bayes Factor for this model. Probably similar/identical to Idea 4.
+
+**Advantages:**
+
+- already existing technical literature
+- allows for testing sub-hypotheses
+
+**Issues:**
+
+- probably hard to specify/calculate for large matrices?
+
+# Idea 5: Bayes Factor for distances
+
+**Idea:** Use distance between posterior samples to compare models, put a prior on the distances
+
+**Advantages:**
+
+- Closest to existing idea in the paper
+- "novel" idea
+- no double comparison needed
+- works on posterior samples only
+
+**Issues:**
+
+- where to put the prior?
+- we might have to work with odd (noncentral) chi distribution for distances
+
+# Idea 6: Invariance Testing with Stan
+
+**Idea:** Fit new model with parameters constrained to be equal between individuals, compare to unconstrained model. Basically what Hoekstra/Epskamp are doing with INIT
+
+**Advantages:**
+
+- already existing technical literature
+- nice connection to INIT
+
+**Disadvantages:**
+
+- requires new model/Stan
+- quite far removed from previous ideas
+
