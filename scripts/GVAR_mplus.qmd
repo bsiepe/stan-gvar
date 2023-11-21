@@ -106,9 +106,181 @@ runModels(here("scripts/mplus_gvar_example.inp"),
 Extract posterior samples
 ```{r}
 # Extract posterior samples
-mplus_res <- importMPlus(here("scripts/mplus_gvar_example.out"))
+mplus_res <- readModels(here("scripts/mplus_gvar_example.out"))
+
+mplus_samples <- mplus_res$bparameters$valid_draw
+
+# convert the list mplus_samples to a dataframe
+mplus_samples <- do.call(rbind, mplus_samples)
+mplus_samples <- as.data.frame(mplus_samples)
+
+names(mplus_samples)
+
+# Extract every column that contains an ".ON" in the name
+# these are the regression coefficients
+samples_beta <- mplus_samples %>% 
+  dplyr::select(contains(".ON")) 
+  
+
+# extract innovation covariance
+samples_theta <- mplus_samples %>% 
+  dplyr::select(contains("with"))
+
+# extract diagonal columns of covariance matrix
+selected_columns <- names(mplus_samples) %>% 
+  str_detect("\\d+_V\\d$")
+samples_diag <- mplus_samples %>% 
+  dplyr::select(which(selected_columns))
+
+
 ```
 
+Convert posterior samples to matrix format for beta is rather straightforward:
+```{r}
+# Convert posterior samples to matrix format
+# beta
+split_beta <- split(samples_beta, 1:nrow(samples_beta))
+beta_samples <- lapply(split_beta, function(x) {
+  matrix(x, nrow = 4, ncol = 4, byrow = TRUE)
+})
+# convert this list to an array
+beta_samples <- array(unlist(beta_samples), dim = c(4, 4, length(beta_samples)))
+
+
+
+
+
+
+```
+
+More complicated for theta:
+```{r}
+# Function to extract covariance values and create covariance matrix
+create_cov_mat <- function(dat, n_row, n_col) {
+  
+  cov_matrix <- matrix(NA, nrow = n_row, ncol = n_col)
+  diag(cov_matrix) <- 0
+  for (i in 1:ncol(dat)) {
+    col_name <- names(dat)[i]
+    values <- as.vector(strsplit(sub(".*_", "", col_name), "\\."))  # Extract everything after the underscore
+    
+    # Extract row and column indices from the column name
+    row_index <- as.numeric(gsub("V", "", values[[1]][1]))
+    col_index <- as.numeric(gsub("V", "", values[[1]][3]))
+    
+    # Assign the value to the corresponding position in the covariance matrix
+    cov_matrix[row_index, col_index] <- as.numeric(dat[,i])
+    cov_matrix[col_index, row_index] <- as.numeric(dat[,i])  # Covariance matrix is symmetric
+  }
+  
+  return(cov_matrix)
+}
+
+# theta
+split_theta <- split(samples_theta, 1:nrow(samples_theta))
+theta_samples <- lapply(split_theta, function(x) {
+  create_cov_mat(x, 4, 4)
+})
+
+# fill each diagonal with the variances
+for (i in 1:length(theta_samples)) {
+  diag(theta_samples[[i]]) <- as.numeric(samples_diag[i,])
+}
+
+# Convert to array
+theta_samples <- array(unlist(theta_samples), dim = c(4, 4, length(theta_samples)))
+
+
+
+```
+
+Convert to partial correlations
+```{r}
+pcor_samples <- lapply(theta_samples, function(x){
+  -cov2cor(x)
+})
+# convert to array
+pcor_samples <- array(unlist(pcor_samples), dim = c(4, 4, length(pcor_samples)))
+
+```
+
+
+Convert this all to a function: 
+The only issue is that this need variable naming with "V"...
+```{r}
+library(tidyverse)
+
+convert_mplus_samples <- function(mplus_output_file) {
+  # browser()
+  # Extract posterior samples
+  mplus_res <- readModels(mplus_output_file)
+  mplus_samples <- as.data.frame(do.call(rbind, mplus_res$bparameters$valid_draw))
+
+  # Extract columns
+  samples_beta <- mplus_samples %>% 
+    dplyr::select(contains(".ON"))
+  samples_theta <- mplus_samples %>% 
+    dplyr::select(contains("with"))
+  selected_columns <- names(mplus_samples) %>% 
+    str_detect("\\d+_V\\d$")
+  samples_diag <- mplus_samples %>% 
+    dplyr::select(which(selected_columns))
+  nvar <- sum(selected_columns)  # Number of variables
+
+  # Convert posterior samples to matrix format
+  beta_samples <- lapply(split_beta, function(x) {
+    matrix(x, nrow = 4, ncol = 4, byrow = TRUE)
+  })
+  # convert this list to an array
+  beta_samples <- array(unlist(beta_samples), 
+                        dim = c(4, 4, length(beta_samples)))
+  split_theta <- split(samples_theta, 1:nrow(samples_theta))
+  
+
+  # Function to extract covariance values and create covariance matrix
+  create_cov_mat <- function(dat, diag_values) {
+    cov_matrix <- matrix(NA, nrow = nvar, ncol = nvar)
+    diag(cov_matrix) <- 0
+    for (i in 1:ncol(dat)) {
+      col_name <- names(dat)[i]
+      values <- as.vector(strsplit(sub(".*_", "", col_name), "\\."))
+
+      # Extract row and column indices from the column name
+      row_index <- as.numeric(gsub("V", "", values[[1]][1]))
+      col_index <- as.numeric(gsub("V", "", values[[1]][3]))
+
+      # Assign the value to the corresponding position in the covariance matrix
+      cov_matrix[row_index, col_index] <- as.numeric(dat[, i])
+      cov_matrix[col_index, row_index] <- as.numeric(dat[, i])  # Covariance matrix is symmetric
+    }
+    diag(cov_matrix) <- as.numeric(diag_values)
+    return(cov_matrix)
+  }
+
+  # this is a very ugly mix of a loop and lapply, sorry...
+  theta_samples <- simplify2array(lapply(seq_along(split_theta), function(i) {
+      create_cov_mat(split_theta[[i]], samples_diag[i,])
+      }))
+
+
+  # Convert to partial correlations
+  pcor_samples <- array(NA, dim = dim(theta_samples))
+  for(i in 1:dim(theta_samples)[3]) {
+    tmp <- -cov2cor(theta_samples[,,i])
+    diag(tmp) <- 0
+    pcor_samples[, , i] <- tmp
+  }
+
+  return(list(beta_samples = beta_samples, theta_samples = theta_samples, pcor_samples = pcor_samples))
+}
+
+```
+
+Try the function:
+```{r}
+test <- convert_mplus_samples(here("scripts/mplus_gvar_example.out"))
+
+```
 
 
 
