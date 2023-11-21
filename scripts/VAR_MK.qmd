@@ -627,12 +627,15 @@ var_lkj_model <- cmdstanr::cmdstan_model(
   )
 # Run variational
 var_lkj_fit_vb <- var_lkj_model$variational(
-  algorithm = "fullrank",
+  algorithm = "meanfield",
   data = stan_data,
   seed = 2023,
   tol_rel_obj = .001,
-  init = .1,
-  refresh = 1000
+  init = 0.1,
+  refresh = 1000,
+  iter = 50000,
+  eval_elbo = 200,
+  output_samples = 1e4
 )
 # time to fit
 var_lkj_fit_vb$time()$total
