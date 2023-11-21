@@ -285,8 +285,8 @@ Compare data structures of BGGM and the stan model/posterior package
 ```{r}
 # Load data of two individuals
 data <- BGGM::ifit
-data_1 <- subset(data, id == 1) %>% remove_missing()
-data_3 <- subset(data, id == 3) %>% remove_missing()
+data_1 <- subset(data, id == 1) 
+data_3 <- subset(data, id == 3) 
 
 # Estimate networks
 # (should perform detrending etc. in a real use case)
@@ -336,36 +336,67 @@ Posterior samples are in a slightly different format when we use the BGGM packag
 in BGGM, they are in a tensor format. I think this will be the most efficient format for the test.
 
 ```{r}
-net_1$fit$beta
+net_1_bggm$fit$beta
 draws_beta %>% View()
-
 ```
 
 ```{r}
-(net_1_bggm)
+
+draws_net_1_beta_bggm <-  lapply(1:dim(net_1_bggm$fit$beta)[3], function(n){
+  net_1_bggm$fit$beta[,,n]
+})
+
+draws_net_3_beta_bggm <-  lapply(1:dim(net_3_bggm$fit$beta)[3], function(n){
+  net_3_bggm$fit$beta[,,n]
+})
+
+beta_diff_post <- mat_diff_L2(draws_net_1_beta_bggm, draws_net_3_beta_bggm)
+beta_diff_prior <- chi::rchi(n = length(beta_diff_post), df = ncol(beta_post_1[[1]]), ncp = 0)
 
 
+
+data.frame(posterior = beta_diff_post, prior = beta_diff_prior) %>% 
+  ggplot() +
+  geom_histogram(aes(posterior), fill = "red", alpha = .5, binwidth = .1) +
+  geom_histogram(aes(prior), fill = "blue", alpha = .5,  binwidth = .1) +
+  xlim(0,NA)
+
+bf <- bayestestR::bayesfactor_parameters(posterior = beta_diff_post, prior = beta_diff_prior)
+bf
+bf$log_BF
 ```
 
 
 ### Compare Models for same True Parameters
 ```{r}
-gvar_mod <- graphicalVAR::randomGVARmodel(Nvar = 8,
-                              probKappaEdge = .3,
-                              probBetaEdge = .2)
+gvar_mod1 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
+gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
+gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
 
-data_1 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
-                                                    beta = gvar_mod$beta,
-                                                    kappa = gvar_mod$kappa)
+t <- 200
 
-data_2 <- gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
-                                                    beta = gvar_mod$beta,
-                                                    kappa = gvar_mod$kappa)
-K <- ncol(data_1)
+data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+
+data_1b <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+
+
+data_2 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod2$beta,
+                                        kappa = gvar_mod2$kappa)
+
+data_3 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod3$beta,
+                                        kappa = gvar_mod3$kappa)
+
+K <- ncol(data_1a)
 prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
 prior_Rho_scale <- matrix(.4, nrow = K, ncol = K)
 prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
-prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)
 
 source(here("scripts", "functions.R"))
 priors <- list(
@@ -377,14 +408,144 @@ priors <- list(
 ```
 
 ```{r message=FALSE}
-net_1_fit <- fit_gVAR_stan(data = data_1, priors = priors)
-net_2_fit <- fit_gVAR_stan(data = data_2, priors = priors)
+net_1a_fit <- fit_gVAR_stan(data = data_1a, priors = priors, iter_sampling = 2000)
+net_1b_fit <- fit_gVAR_stan(data = data_1b, priors = priors, iter_sampling = 2000)
+net_2_fit <- fit_gVAR_stan(data = data_2, priors = priors, iter_sampling = 2000)
+net_3_fit <- fit_gVAR_stan(data = data_3, priors = priors, iter_sampling = 2000)
 ```
+
+```{r}
+beta_post_1a <-
+  rstan::extract(net_1a_fit, "Beta", permuted = FALSE) %>% as_draws_matrix() 
+
+beta_post_1b <-
+  rstan::extract(net_1b_fit, "Beta", permuted = FALSE) %>% as_draws_matrix() 
+
+beta_post_2 <-
+  rstan::extract(net_2_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+
+beta_post_3 <-
+  rstan::extract(net_3_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+```
+
+```{r}
+a <- beta_post_1a - beta_post_1b %>% as.data.frame()
+b <- a^2
+c <- 
+```
+
+
+```{r}
+compare_mat <- function(mat1, mat2) {
+  diff_post <- mat1 - mat2 %>% as.data.frame()
+  
+  mean <- diff_post %>% apply(2, mean) 
+  
+  diff_post <- diff_post %>% 
+    apply(2, scale) %>%
+    apply(1, function(x){x+mean}) %>%
+    apply(2, function(x) {
+      x ^ 2
+    }) %>%
+    apply(., 1, sum)
+  
+
+  
+  diff_prior <-
+    rchisq(n = length(diff_post),
+           df = ncol(mat1),
+           ncp = 0)
+  
+
+  
+  # plot prior vs. postirior
+  plot <- data.frame(posterior = diff_post, prior = diff_prior) %>%
+    ggplot2::ggplot() +
+    ggplot2::geom_density(
+      aes(posterior),
+      fill = "red",
+      alpha = .5
+    ) +
+    ggplot2::geom_density(
+      aes(prior),
+      fill = "blue",
+      alpha = .5
+    ) +
+    ggplot2::xlim(0, NA)
+  
+  print(plot)
+  
+  # compute bayesfactor
+  bf <- bayestestR::bf_parameters(posterior = diff_post, prior = diff_prior, direction = ">")
+  print(bf)
+}
+```
+
+```{r}
+compare_mat(beta_post_1a, beta_post_1b)
+compare_mat(beta_post_1a, beta_post_2)
+compare_mat(beta_post_1a, beta_post_3)
+```
+```{r}
+# mat_diff_L2 <- function(mat_post_1, mat_post_2) {
+#   diff <- lapply(1:length(mat_post_1), function(n) {
+#     sum((mat_post_1[[n]] - mat_post_2[[n]]) ^ 2)
+#   })
+#   diff <- unlist(diff)
+#   return(diff)
+# } 
+```
+
+
+
+
+
+
+
+
+
+```{r stan data & compilation}
+beta_post_1 <- rstan::extract(net_1a_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+beta_post_2 <- rstan::extract(net_2_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+
+# prepare stan data
+diff_test_stan_data <-
+  list(P = ncol(beta_post_1),
+       N = nrow(beta_post_1),
+       Y_1 = beta_post_1,
+       Y_2 = beta_post_2
+       )
+# Choose model to fit
+model_name <- "chisqr_diff_test"
+# number of MCMC chains
+n_chains <- 4
+```
+
+```{r}
+# Compile model
+diff_test_model <- rstan::stan_model(
+  file = here("scripts", paste0(model_name, ".stan")))
+# Run sampler
+diff_test_fit <- rstan::sampling(
+  object = diff_test_model,
+  data = diff_test_stan_data,
+  seed = 2023,
+  chains = n_chains,
+  cores = n_chains,
+  iter = 1000,
+  warmup = 500,
+  refresh = 500,
+  thin = 1,
+  init = .1,
+  control = list(adapt_delta = .8)
+)
+```
+
 
 ```{r}
 source(here("scripts","functions.R"))
 
-cores <- parallel::detectCores()-4
+cores <- parallel::detectCores() - 4
 net_1_data_1_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_1, n_cores = cores)
 net_1_data_2_loo <- loo_gVAR(stan_fit = net_1_fit, data = data_2, n_cores = cores)
 net_2_data_2_loo <- loo_gVAR(stan_fit = net_2_fit, data = data_2, n_cores = cores)

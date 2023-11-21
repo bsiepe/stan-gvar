@@ -71,71 +71,76 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
 }
 
 #------------------------------------------------------------------------------>
-fit_gVAR_stan <- function(data, priors, backend = "rstan") {
-  # Specify Priors
-  prior_Rho_loc <- priors[["prior_Rho_loc"]]
-  prior_Rho_scale <- priors[["prior_Rho_scale"]]
-  prior_Beta_loc <- priors[["prior_Beta_loc"]]
-  prior_Beta_scale <- priors[["prior_Beta_scale"]]
-  
-  Y <- data %>% apply(., 2, scale)
-  K <- ncol(data)
-  n_t <- nrow(data)
-  
-  stan_data <- list(
-    K = K,
-    "T" = n_t,
-    Y = as.matrix(Y),
-    prior_Rho_loc = prior_Rho_loc,
-    prior_Rho_scale = prior_Rho_scale,
-    prior_Beta_loc = prior_Beta_loc,
-    prior_Beta_scale = prior_Beta_scale
-  )
-  # number of MCMC chains
-  n_chains <- 4
-  # Choose model to fit
-  model_name <- "VAR_lkj"
-  
-  if (backend == "rstan") {
-    # Compile model
-    stan_model <- rstan::stan_model(file = here("scripts", paste0(model_name, ".stan")))
-    # Run sampler
-    stan_fit <- rstan::sampling(
-      object = stan_model,
-      data = stan_data,
-      pars = c("Beta_raw"),
-      include = FALSE,
-      seed = 2023,
-      chains = n_chains,
-      cores = n_chains,
-      iter = 1000,
-      warmup = 500,
-      refresh = 500,
-      thin = 1,
-      init = .1,
-      control = list(adapt_delta = .8)
+fit_gVAR_stan <-
+  function(data,
+           priors,
+           backend = "rstan",
+           iter_sampling = 500,
+           iter_warmup = 500,
+           n_chains = 4) {
+    # Specify Priors
+    prior_Rho_loc <- priors[["prior_Rho_loc"]]
+    prior_Rho_scale <- priors[["prior_Rho_scale"]]
+    prior_Beta_loc <- priors[["prior_Beta_loc"]]
+    prior_Beta_scale <- priors[["prior_Beta_scale"]]
+    
+    Y <- data %>% apply(., 2, scale)
+    K <- ncol(data)
+    n_t <- nrow(data)
+    
+    stan_data <- list(
+      K = K,
+      "T" = n_t,
+      Y = as.matrix(Y),
+      prior_Rho_loc = prior_Rho_loc,
+      prior_Rho_scale = prior_Rho_scale,
+      prior_Beta_loc = prior_Beta_loc,
+      prior_Beta_scale = prior_Beta_scale
     )
-  } else{
-    # Compile model
-    stan_model <-
-      cmdstanr::cmdstan_model(stan_file = here("scripts", paste0(model_name, ".stan")),
-                              pedantic = TRUE)
-    # Run sampler
-    stan_fit <- stan_model$sample(
-      data = stan_data,
-      seed = 35032,
-      chains = n_chains,
-      parallel_chains = n_chains,
-      iter_warmup = 500,
-      iter_sampling = 500,
-      refresh = 500,
-      thin = 1,
-      adapt_delta = .8,
-      init = .1
-    )
+    # Choose model to fit
+    model_name <- "VAR_lkj"
+    
+    if (backend == "rstan") {
+      # Compile model
+      stan_model <-
+        rstan::stan_model(file = here("scripts", paste0(model_name, ".stan")))
+      # Run sampler
+      stan_fit <- rstan::sampling(
+        object = stan_model,
+        data = stan_data,
+        pars = c("Beta_raw"),
+        include = FALSE,
+        seed = 2023,
+        chains = n_chains,
+        cores = n_chains,
+        iter = iter_sampling + iter_warmup,
+        warmup = iter_warmup,
+        refresh = 500,
+        thin = 1,
+        init = .1,
+        control = list(adapt_delta = .8)
+      )
+    } else{
+      # Compile model
+      stan_model <-
+        cmdstanr::cmdstan_model(stan_file = here("scripts", paste0(model_name, ".stan")),
+                                pedantic = TRUE)
+      # Run sampler
+      stan_fit <- stan_model$sample(
+        data = stan_data,
+        seed = 35032,
+        chains = n_chains,
+        parallel_chains = n_chains,
+        iter_warmup = iter_warmup,
+        iter_sampling = iter_sampling,
+        refresh = 500,
+        thin = 1,
+        adapt_delta = .8,
+        init = .1
+      )
+    }
+    return(stan_fit)
   }
-  return(stan_fit)
-}
 
 loo_gVAR <- function(stan_fit, data, n_cores = 1) {
   c <- class(stan_fit)
