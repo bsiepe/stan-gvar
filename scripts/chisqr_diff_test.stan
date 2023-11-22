@@ -13,26 +13,34 @@ data {
 parameters {
   // Temporal
   matrix<lower=0>[P,2] mu;
-  vector<lower=0>[2] mu_mu
+  vector<lower=0>[2] mu_mu;
   vector<lower=0>[2] sigma_mu;
   
   matrix<lower=0>[P,2] sigma;
   vector<lower=0>[2] mu_sigma;
   vector<lower=0>[2] sigma_sigma;
   
+  // BS: difference also needs to be specified?
+  real diff;
+  
   
 }
 ////////////////////////////////////////////////////////////////////////////////
 model {
   // Priors
-  mu          ~ normal(mu_mu, sigma_mu);
+  // BS: Shouldn't we loop here? It's an array above
+  // BS: Not sure if we also need to index the mu_sigma and sigma_sigma
+  for (p in 1:P) {
+    mu[p] ~ normal(mu_mu, sigma_mu);
+    sigma[p] ~ normal(mu_sigma, sigma_sigma);
+  }  
   mu_mu       ~ student_t(3,0,1);
   sigma_mu    ~ student_t(3,0,1);
   
   diff        ~ std_normal();
   
   sigma[,1]   ~ normal(mu_sigma[1], sigma_sigma[1]);
-  sigma[,2]   ~ normal(mu_sigma[1], sigma_sigma[1]);
+  sigma[,2]   ~ normal(mu_sigma[1], sigma_sigma[1]); //BS: Should be sigma_sigma[2]?
   mu_sigma    ~ student_t(3,0,1);
   sigma_sigma ~ student_t(3,0,1);
    
@@ -44,5 +52,5 @@ model {
 }
 ////////////////////////////////////////////////////////////////////////////////
 generated quantities{
-  rael diff_sqr = diff^2;
+  real diff_sqr = diff^2;
 }
