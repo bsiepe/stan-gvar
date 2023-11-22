@@ -275,5 +275,150 @@ array_compare_dgp <- function(post_samples,
 
    
    
-   
+
+# -------------------------------------------------------------------------
+# Mplus -------------------------------------------------------------------
+# -------------------------------------------------------------------------
+
+# Create VAR Syntax in Mplus ----------------------------------------------
+mplus_var_syntax <- function(data, 
+                             varnames = colnames(data), 
+                             laggedvars = NULL, 
+                             cores = 1, 
+                             iterations = 4000, 
+                             model = NULL, 
+                             datafile = "mplus_data.dat",
+                             syntaxfile = "mplus_model.inp",
+                             samplesfile = "mplus_samples.dat") {
+  # browser()
+  
+  # Default variable names (V1, V2, ...)
+  if (is.null(varnames)) {
+    varnames <- paste0("V", 1:ncol(data))
+  }
+  
+  # Default lagged variables (V1(1), V2(1), ...)
+  if (is.null(laggedvars)) {
+    laggedvars <- paste0(varnames, "(1)")
+  }
+  
+  # Default model if not specified
+  if (is.null(model)) {
+    model <- paste(paste(varnames, " ON ", paste(varnames, "&1", sep = "", collapse = " "), ";", sep = ""), collapse = "\n")
+  }
+  
+  # # Write data to Mplus input format using MplusAutomation
+  suppressMessages(MplusAutomation::prepareMplusData(data,
+                                                     filename = datafile,
+                                                     quiet = TRUE))
+  
+  # Fill in the template
+  mplus_template <- "
+DATA:	    FILE = @@DATAFILE@@;    ! data file (should be in same folder)
+
+VARIABLE:	NAMES = @@VARNAMES@@;          ! providing names to the variables 
+          USEVARIABLES = @@USEVARIABLES@@;   ! select variables for the analysis
+	        LAGGED = @@LAGGEDVARS@@;  ! creating first-order
+                                    ! lagged observed variables                                    
+            MISSING = *;            ! missing value code
+
+ANALYSIS:	ESTIMATOR = BAYES;      ! set estimator (must be Bayes for DSEM) 
+	        PROCESSORS = @@CORES@@;         ! using 2 processors
+	        BITERATIONS = @@ITERATIONS@@;   ! choose number of iterations;
+                                    ! minimum is now 2000; will be more if 
+                                    ! the convergence criterion indicates
+                                    ! convergence was not reached
+
+MODEL:	    @@MODEL@@
+
+OUTPUT:	    TECH1 TECH8;            ! asking additional output
+SAVEDATA: BPARAMETERS IS @@SAMPLESFILE@@; ! saving posterior samples
+"
+  mplus_syntax <- mplus_template
+  
+  # Substitute placeholders with actual values
+  mplus_syntax <- gsub("@@DATAFILE@@", datafile, mplus_syntax)
+  mplus_syntax <- gsub("@@VARNAMES@@", paste(varnames, collapse = " "), mplus_syntax)
+  mplus_syntax <- gsub("@@USEVARIABLES@@", paste(varnames, collapse = " "), mplus_syntax)
+  mplus_syntax <- gsub("@@LAGGEDVARS@@", paste(laggedvars, collapse = " "), mplus_syntax)
+  mplus_syntax <- gsub("@@CORES@@", cores, mplus_syntax)
+  mplus_syntax <- gsub("@@ITERATIONS@@", iterations, mplus_syntax)
+  mplus_syntax <- gsub("@@MODEL@@", model, mplus_syntax)
+  mplus_syntax <- gsub("@@SAMPLESFILE@@", samplesfile, mplus_syntax)
+  
+  # Write syntax to file
+  invisible(writeLines(mplus_syntax, syntaxfile))
+  
+  return(list(syntax = mplus_syntax))
+}
+
+
+# Convert Mplus samples to array ------------------------------------------
+convert_mplus_samples <- function(mplus_output_file) {
+  # browser()
+  # Extract posterior samples
+  mplus_res <- MplusAutomation::readModels(mplus_output_file)
+  mplus_samples <- as.data.frame(do.call(rbind, mplus_res$bparameters$valid_draw))
+  
+  # Extract columns
+  samples_beta <- mplus_samples %>% 
+    dplyr::select(contains(".ON"))
+  samples_sigma <- mplus_samples %>% 
+    dplyr::select(contains("with"))
+  selected_columns <- names(mplus_samples) %>% 
+    str_detect("\\d+_V\\d$")
+  samples_diag <- mplus_samples %>% 
+    dplyr::select(which(selected_columns))
+  nvar <- sum(selected_columns)  # Number of variables
+  
+  # Convert posterior samples to matrix format
+  split_beta <- split(samples_beta, 1:nrow(samples_beta))
+  beta_samples <- lapply(split_beta, function(x) {
+    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
+  })
+  # convert this list to an array
+  beta_samples <- array(unlist(beta_samples), 
+                        dim = c(nvar, nvar, length(beta_samples)))
+  split_sigma <- split(samples_sigma, 1:nrow(samples_sigma))
+  
+  
+  # Function to extract covariance values and create covariance matrix
+  create_cov_mat <- function(dat, diag_values) {
+    cov_matrix <- matrix(NA, nrow = nvar, ncol = nvar)
+    diag(cov_matrix) <- 0
+    for (i in 1:ncol(dat)) {
+      col_name <- names(dat)[i]
+      values <- as.vector(strsplit(sub(".*_", "", col_name), "\\."))
+      
+      # Extract row and column indices from the column name
+      row_index <- as.numeric(gsub("V", "", values[[1]][1]))
+      col_index <- as.numeric(gsub("V", "", values[[1]][3]))
+      
+      # Assign the value to the corresponding position in the covariance matrix
+      cov_matrix[row_index, col_index] <- as.numeric(dat[, i])
+      cov_matrix[col_index, row_index] <- as.numeric(dat[, i])  # Covariance matrix is symmetric
+    }
+    diag(cov_matrix) <- as.numeric(diag_values)
+    return(cov_matrix)
+  }
+  
+  # this is a very ugly mix of a loop and lapply, sorry...
+  sigma_samples <- simplify2array(lapply(seq_along(split_sigma), function(i) {
+    create_cov_mat(split_sigma[[i]], samples_diag[i,])
+  }))
+  
+  
+  # Convert to partial correlations
+  pcor_samples <- array(NA, dim = dim(sigma_samples))
+  for(i in 1:dim(sigma_samples)[3]) {
+    # take inverse of covariance matrix (i.e. precision)
+    # and convert to partial correlation matrix
+    tmp <- -stats::cov2cor(solve(sigma_samples[,,i]))
+    diag(tmp) <- 0
+    pcor_samples[, , i] <- tmp
+  }
+  
+  return(list(beta = beta_samples, sigma = sigma_samples, rho = pcor_samples))
+}
+
    
