@@ -503,15 +503,15 @@ compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
     sqrt()
   
   diff_null <-
-    (runif(
-      n = nrow(mat1) * ncol(mat1),
-      min = -.05 ,
-      max = .05
+    (rnorm(
+        n = 2000,
+        mean = 0,
+        sd = 0.05
     ) -
-      runif(
-        n = 1000,
-        min = -.05 ,
-        max = .05
+      rnorm(
+        n = 2000,
+        mean = 0,
+        sd = 0.05
       )) ^ 2 %>%
     matrix(., nrow = nrow(mat1), ncol = ncol(mat1)) %>%
     apply(., 1, sum) %>%
@@ -529,6 +529,7 @@ compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
       ggplot2::geom_density(aes(prior),
                             fill = "blue",
                             alpha = .5) +
+      geom_vline(xintercept = null_ci$CI_high) +
       # ggplot2::geom_histogram(aes(posterior),
       #                       fill = "red",
       #                       alpha = .5, 
@@ -548,11 +549,13 @@ compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
     bayestestR::bf_parameters(
       posterior = diff_post,
       prior = diff_prior,
-      null = c(0, null_ci$CI_high),
+      null = c(0,null_ci$CI_high),
       direction = ">"
     )
-  print(paste("BF:", exp(bf$log_BF)))
-  print(paste("log-BF:", round(bf$log_BF, 2)))
+  print(bf)
+  # print(paste("BF:", exp(bf$log_BF)))
+  # print(paste("log-BF:", round(bf$log_BF, 2)))
+  
   
   return(bf$log_BF)
   
@@ -565,7 +568,7 @@ compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
 compare_mat(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
-  bootstrap_samples = 1e4,
+  bootstrap_samples = 4e4,
   plot = TRUE
 )
 compare_mat(
@@ -602,19 +605,23 @@ for (i in 1:20) {
     plot = FALSE
   )
 }
-
-            
 ```
 
-
 ```{r}
-# mat_diff_L2 <- function(mat_post_1, mat_post_2) {
-#   diff <- lapply(1:length(mat_post_1), function(n) {
-#     sum((mat_post_1[[n]] - mat_post_2[[n]]) ^ 2)
-#   })
-#   diff <- unlist(diff)
-#   return(diff)
-# } 
+sd(log_BFs)
+sd(log_BFs_boot)
+data.frame(log_BFs = log_BFs, log_BFs_boot = log_BFs_boot) %>%
+      ggplot2::ggplot() +
+      ggplot2::geom_histogram(aes(log_BFs),
+                            fill = "red",
+                            alpha = .5,
+                            binwidth = 1) +
+      ggplot2::geom_histogram(aes(log_BFs_boot),
+                            fill = "blue",
+                            alpha = .5,
+                            binwidth = 1) +
+      ggplot2::xlim(-20, 0)
+
 ```
 
 
