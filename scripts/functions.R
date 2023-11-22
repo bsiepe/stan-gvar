@@ -242,7 +242,9 @@ stan_fit_convert <-
 
 # Compare fit to DGP ------------------------------------------------------
 array_compare_dgp <- function(post_samples, 
-                              dgp = NULL) {
+                              dgp = NULL,
+                              plot = TRUE,
+                              dgp_pcor_name = "pcor") {
 
   # Compute mean for each array element across the third dimension 
   # of post_samples
@@ -252,10 +254,22 @@ array_compare_dgp <- function(post_samples,
   post_samples_median <- lapply(post_samples, function(x) {
     apply(x, c(1, 2), median)
   })
-
   
-  list(mean_est = post_samples_mean, 
-       median_est = post_samples_median)
+  # Compare median of beta to DGP
+  beta_diff <- post_samples_median$beta - dgp$beta
+  rho_diff <- post_samples_median$rho - dgp[[dgp_pcor_name]]
+  
+  
+  result <- list(beta_diff = beta_diff, rho_diff = rho_diff)
+  
+  if(isTRUE(plot)){
+    # Plot both difference matrixes using cor.plot
+    par(mfrow = c(1, 2))
+    psych::cor.plot(beta_diff, main = "Beta difference")
+    psych::cor.plot(rho_diff, main = "Rho difference", upper = FALSE)
+  }
+
+  return(result)
 }
 
 
