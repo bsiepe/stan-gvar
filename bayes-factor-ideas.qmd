@@ -4,20 +4,19 @@ format: html
 editor: visual
 ---
 
-
 # Idea 1: Bayes Factor Cross-Check
 
 **Idea:** Use loglikelihood of cross-check to compute Bayes factor
 
 **Advantages:**
 
-- evidence for the Null
-- easy to implement
+-   evidence for the Null
+-   easy to implement
 
 **Issues:**
 
-- double comparison needed
-- needs access to model, not just posterior samples
+-   double comparison needed
+-   needs access to model, not just posterior samples
 
 # Idea 2: LOO Cross-Check
 
@@ -25,12 +24,12 @@ editor: visual
 
 **Advantages:**
 
-- easy to implement
+-   easy to implement
 
 **Issues:**
 
-- double comparison needed
-- needs access to model, not just posterior samples
+-   double comparison needed
+-   needs access to model, not just posterior samples
 
 # Idea 3: Post Hoc Model Comparison
 
@@ -38,13 +37,13 @@ editor: visual
 
 **Advantages:**
 
-- easy to implement
-- no double comparison needed
-- works on posterior samples only?
+-   easy to implement
+-   no double comparison needed
+-   works on posterior samples only?
 
 **Issues:**
 
-- requires "new model" for the model comparison
+-   requires "new model" for the model comparison
 
 # Idea 4: Bayes Factor for multiple equality constraints
 
@@ -52,12 +51,12 @@ editor: visual
 
 **Advantages:**
 
-- already existing technical literature
-- allows for testing sub-hypotheses
+-   already existing technical literature
+-   allows for testing sub-hypotheses
 
 **Issues:**
 
-- probably hard to specify/calculate for large matrices?
+-   probably hard to specify/calculate for large matrices?
 
 # Idea 5: Bayes Factor for distances
 
@@ -65,15 +64,15 @@ editor: visual
 
 **Advantages:**
 
-- Closest to existing idea in the paper
-- "novel" idea
-- no double comparison needed
-- works on posterior samples only
+-   Closest to existing idea in the paper
+-   "novel" idea
+-   no double comparison needed
+-   works on posterior samples only
 
 **Issues:**
 
-- where to put the prior?
-- we might have to work with odd (noncentral) chi distribution for distances
+-   where to put the prior?
+-   we might have to work with odd (noncentral) chi distribution for distances
 
 # Idea 6: Invariance Testing with Stan
 
@@ -81,11 +80,10 @@ editor: visual
 
 **Advantages:**
 
-- already existing technical literature
-- nice connection to INIT
+-   already existing technical literature
+-   nice connection to INIT
 
 **Disadvantages:**
 
-- requires new model/Stan
-- quite far removed from previous ideas
-
+-   requires new model/Stan
+-   quite far removed from previous ideas

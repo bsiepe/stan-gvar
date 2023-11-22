@@ -18,6 +18,7 @@ packages <- c(
   "rmarkdown",
   "psych",
   "cmdstanr",
+  "rstan",
   "loo",
   "bayesplot",
   "posterior",
@@ -377,7 +378,7 @@ gvar_mod1 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
 gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
 gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
 
-t <- 200
+t <- 500
 
 data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
                                          beta = gvar_mod1$beta,
@@ -413,84 +414,199 @@ priors <- list(
 
 Fit networks 
 ```{r message=FALSE}
-net_1a_fit <- fit_gVAR_stan(data = data_1a, priors = priors, iter_sampling = 2000)
-net_1b_fit <- fit_gVAR_stan(data = data_1b, priors = priors, iter_sampling = 2000)
-net_2_fit <- fit_gVAR_stan(data = data_2, priors = priors, iter_sampling = 2000)
-net_3_fit <- fit_gVAR_stan(data = data_3, priors = priors, iter_sampling = 2000)
+net_1a_fit <-
+  fit_gVAR_stan(
+    data = data_1a,
+    priors = NULL,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_1b_fit <-
+  fit_gVAR_stan(
+    data = data_1b,
+    priors = NULL,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_2_fit <-
+  fit_gVAR_stan(
+    data = data_2,
+    priors = NULL,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_3_fit <-
+  fit_gVAR_stan(
+    data = data_3,
+    priors = NULL,
+    iter_sampling = 500,
+    method = "sampling"
+  )
 ```
 
 ```{r}
 beta_post_1a <-
   rstan::extract(net_1a_fit, "Beta", permuted = FALSE) %>% as_draws_matrix() 
-
 beta_post_1b <-
   rstan::extract(net_1b_fit, "Beta", permuted = FALSE) %>% as_draws_matrix() 
-
 beta_post_2 <-
   rstan::extract(net_2_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
-
 beta_post_3 <-
   rstan::extract(net_3_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+
+beta_post_1a[c(2,5),c(3,1)]
 ```
 
 ```{r}
-# a <- beta_post_1a - beta_post_1b %>% as.data.frame()
-# b <- a^2
-# c <- 
-```
-
-
-```{r}
-compare_mat <- function(mat1, mat2) {
-  diff_post <- mat1 - mat2 %>% as.data.frame()
+compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
   
-  mean <- diff_post %>% apply(2, mean) 
+  # with bootstrapping
+  if (bootstrap_samples > 0) {
+  rows1 <- sample(1:nrow(mat1), size = bootstrap_samples*ncol(mat1), replace = TRUE)
+  rows2<- sample(1:nrow(mat2), size = bootstrap_samples*ncol(mat1), replace = TRUE)
+  cols <- rep.int(1:ncol(mat1), times = bootstrap_samples)
+
+  col1 <- purrr::map2(.x = rows1, .y = cols, .f = function(.x,.y){mat1[.x, .y]}) %>% 
+    unlist()
+  col2 <- purrr::map2(.x = rows2, .y = cols, .f = function(.x,.y){mat2[.x, .y]}) %>% 
+    unlist()
   
+  diff_post <- (col1 - col2) ^ 2 %>%
+    matrix(., nrow = bootstrap_samples, ncol = ncol(mat1), byrow = TRUE) %>%
+    apply(., 1, sum) %>%
+    sqrt()
+
+  # no bootstrappping
+  }else{
+    diff_post <- mat1 - mat2
+  attr(diff_post, which = "class") <- "matrix"
   diff_post <- diff_post %>% 
-    apply(2, scale) %>%
-    apply(1, function(x){x+mean}) %>%
-    apply(2, function(x) {
+    apply(., 2, function(x) {
       x ^ 2
     }) %>%
-    apply(., 1, sum)
+    apply(., 1, sum) %>% sqrt()
+  }
   
-
+    diff_prior <-
+    (rnorm(
+      n = nrow(mat1) * ncol(mat1),
+      mean = 0,
+      sd = 0.5
+    ) -
+      rnorm(
+        n = nrow(mat1) * ncol(mat1),
+        mean = 0,
+        sd = 0.5
+      )) ^ 2 %>%
+    matrix(., nrow = nrow(mat1), ncol = ncol(mat1)) %>%
+    apply(., 1, sum) %>% 
+    sqrt()
   
-  diff_prior <-
-    rchisq(n = length(diff_post),
-           df = ncol(mat1),
-           ncp = 0)
-  
-
+  diff_null <-
+    (runif(
+      n = nrow(mat1) * ncol(mat1),
+      min = -.05 ,
+      max = .05
+    ) -
+      runif(
+        n = 1000,
+        min = -.05 ,
+        max = .05
+      )) ^ 2 %>%
+    matrix(., nrow = nrow(mat1), ncol = ncol(mat1)) %>%
+    apply(., 1, sum) %>%
+    sqrt()
+    
+    null_ci <- bayestestR::hdi(diff_null)
   
   # plot prior vs. postirior
-  plot <- data.frame(posterior = diff_post, prior = diff_prior) %>%
-    ggplot2::ggplot() +
-    ggplot2::geom_density(
-      aes(posterior),
-      fill = "red",
-      alpha = .5
-    ) +
-    ggplot2::geom_density(
-      aes(prior),
-      fill = "blue",
-      alpha = .5
-    ) +
-    ggplot2::xlim(0, NA)
-  
-  print(plot)
+  if (isTRUE(plot)) {
+    plot <- data.frame(posterior = diff_post, prior = diff_prior) %>%
+      ggplot2::ggplot() +
+      ggplot2::geom_density(aes(posterior),
+                            fill = "red",
+                            alpha = .5) +
+      ggplot2::geom_density(aes(prior),
+                            fill = "blue",
+                            alpha = .5) +
+      # ggplot2::geom_histogram(aes(posterior),
+      #                       fill = "red",
+      #                       alpha = .5, 
+      #                       binwidth = .01) +
+      # ggplot2::geom_histogram(aes(prior),
+      #                       fill = "blue",
+      #                       alpha = .5,
+      #                       binwidth = .01) +
+      ggplot2::xlim(0, 3) +
+      ggplot2::ylim(0, NA)
+    
+    print(plot)
+  }
   
   # compute bayesfactor
-  bf <- bayestestR::bf_parameters(posterior = diff_post, prior = diff_prior, direction = ">")
-  print(bf)
+  bf <-
+    bayestestR::bf_parameters(
+      posterior = diff_post,
+      prior = diff_prior,
+      null = c(0, null_ci$CI_high),
+      direction = ">"
+    )
+  print(paste("BF:", exp(bf$log_BF)))
+  print(paste("log-BF:", round(bf$log_BF, 2)))
+  
+  return(bf$log_BF)
+  
+  # clean up
+  rm(col1, col2, diff_post, diff_prior, diff_null)
 }
 ```
 
 ```{r}
-compare_mat(beta_post_1a, beta_post_1b)
-compare_mat(beta_post_1a, beta_post_2)
-compare_mat(beta_post_1a, beta_post_3)
+compare_mat(
+  mat1 = beta_post_1a,
+  mat2 = beta_post_1b,
+  bootstrap_samples = 1e4,
+  plot = TRUE
+)
+compare_mat(
+  mat1 = beta_post_1a,
+  mat2 = beta_post_2,
+  bootstrap_samples = 1e4,
+  plot = FALSE
+)
+compare_mat(
+  mat1 = beta_post_1a,
+  mat2 = beta_post_3,
+  bootstrap_samples = 1e4,
+  plot = FALSE
+) 
 ```
+
+```{r}
+log_BFs_boot <- rep(NA, 20)
+for (i in 1:20) {
+  log_BFs_boot[i] <- compare_mat(
+    mat1 = beta_post_1a,
+    mat2 = beta_post_1b,
+    bootstrap_samples = 1e4,
+    plot = FALSE
+  )
+}
+
+log_BFs <- rep(NA, 20)
+for (i in 1:20) {
+  log_BFs[i] <- compare_mat(
+    mat1 = beta_post_1a,
+    mat2 = beta_post_1b,
+    bootstrap_samples = 1e4,
+    plot = FALSE
+  )
+}
+
+            
+```
+
+
 ```{r}
 # mat_diff_L2 <- function(mat_post_1, mat_post_2) {
 #   diff <- lapply(1:length(mat_post_1), function(n) {
@@ -626,31 +742,17 @@ var_lkj_LML$logml
 
 # Compare Variational Inference
 ```{r}
-# Compile model
-var_lkj_model <- cmdstanr::cmdstan_model(
-  stan_file = here("scripts", paste0(model_name, ".stan")),
-  pedantic = TRUE#,   
-  #quiet = FALSE
-  )
+source(here("scripts","functions.R"))
+Y <- gvar_dat %>% apply(., 2, scale)
 # Run variational
-var_lkj_fit_vb <- var_lkj_model$variational(
-  algorithm = "meanfield",
-  data = stan_data,
-  seed = 2023,
-  tol_rel_obj = .001,
-  init = 0.1,
-  refresh = 1000,
-  iter = 50000,
-  eval_elbo = 200,
-  output_samples = 1e4
-)
+var_lkj_fit_vb <- fit_gVAR_stan(data = Y,backend = "rstan", method = "variational")
 # time to fit
 var_lkj_fit_vb$time()$total
 ```
 
 ```{r}
 medians_Beta_vb <-
-  var_lkj_fit_vb$summary("Beta") %>% 
+  summary(var_lkj_fit_vb, "Beta") %>% 
   dplyr::select(median) %>% 
   unlist() %>% 
   round(2)

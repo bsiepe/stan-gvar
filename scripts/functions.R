@@ -71,19 +71,32 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
 }
 
 #------------------------------------------------------------------------------>
+# Function to fit the gVAR Model in Stan
+#------------------------------------------------------------------------------>
 fit_gVAR_stan <-
   function(data,
-           priors,
+           priors = NULL,
            backend = "rstan",
+           method = "sampling",
            iter_sampling = 500,
            iter_warmup = 500,
-           n_chains = 4) {
-    # Specify Priors
-    prior_Rho_loc <- priors[["prior_Rho_loc"]]
-    prior_Rho_scale <- priors[["prior_Rho_scale"]]
-    prior_Beta_loc <- priors[["prior_Beta_loc"]]
-    prior_Beta_scale <- priors[["prior_Beta_scale"]]
+           n_chains = 4,
+           ...) {
     
+    # Specify Priors
+    if (is.null(priors)){
+      prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
+      prior_Rho_scale <- matrix(.4, nrow = K, ncol = K)
+      prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+      prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)
+    }else{
+      prior_Rho_loc <- priors[["prior_Rho_loc"]]
+      prior_Rho_scale <- priors[["prior_Rho_scale"]]
+      prior_Beta_loc <- priors[["prior_Beta_loc"]]
+      prior_Beta_scale <- priors[["prior_Beta_scale"]]
+    }
+    
+    # Stan Data
     Y <- data %>% apply(., 2, scale)
     K <- ncol(data)
     n_t <- nrow(data)
@@ -97,6 +110,7 @@ fit_gVAR_stan <-
       prior_Beta_loc = prior_Beta_loc,
       prior_Beta_scale = prior_Beta_scale
     )
+    
     # Choose model to fit
     model_name <- "VAR_lkj"
     
@@ -104,44 +118,77 @@ fit_gVAR_stan <-
       # Compile model
       stan_model <-
         rstan::stan_model(file = here("scripts", paste0(model_name, ".stan")))
-      # Run sampler
-      stan_fit <- rstan::sampling(
-        object = stan_model,
-        data = stan_data,
-        pars = c("Beta_raw"),
-        include = FALSE,
-        seed = 2023,
-        chains = n_chains,
-        cores = n_chains,
-        iter = iter_sampling + iter_warmup,
-        warmup = iter_warmup,
-        refresh = 500,
-        thin = 1,
-        init = .1,
-        control = list(adapt_delta = .8)
-      )
+      
+      if (method == "sampling") {
+        # Run sampler
+        stan_fit <- rstan::sampling(
+          object = stan_model,
+          data = stan_data,
+          pars = c("Beta_raw"),
+          include = FALSE,
+          seed = 35032,
+          chains = n_chains,
+          cores = n_chains,
+          iter = iter_sampling + iter_warmup,
+          warmup = iter_warmup,
+          refresh = 500,
+          thin = 1,
+          init = .1,
+          control = list(adapt_delta = .8),
+          ...
+        )
+      }
+      if (method == "variational") {
+        stan_fit <- rstan::vb(
+          object = stan_model,
+          data = stan_data,
+          pars = c("Beta_raw"),
+          include = FALSE,
+          seed = 35032,
+          init = .1,
+          tol_rel_obj = .001,
+          output_samples = iter_sampling * n_chains,
+          ...
+        )
+      }
     } else{
       # Compile model
       stan_model <-
         cmdstanr::cmdstan_model(stan_file = here("scripts", paste0(model_name, ".stan")),
                                 pedantic = TRUE)
-      # Run sampler
-      stan_fit <- stan_model$sample(
-        data = stan_data,
-        seed = 35032,
-        chains = n_chains,
-        parallel_chains = n_chains,
-        iter_warmup = iter_warmup,
-        iter_sampling = iter_sampling,
-        refresh = 500,
-        thin = 1,
-        adapt_delta = .8,
-        init = .1
-      )
+      if (method == "sampling") {
+        # Run sampler
+        stan_fit <- stan_model$sample(
+          data = stan_data,
+          seed = 35032,
+          chains = n_chains,
+          parallel_chains = n_chains,
+          iter_warmup = iter_warmup,
+          iter_sampling = iter_sampling,
+          refresh = 500,
+          thin = 1,
+          adapt_delta = .8,
+          init = .1,
+          ...
+        )
+      }
+      if (method == "variational") {
+        stan_fit <- stan_model$variational(
+          data = stan_data,
+          seed = 35032,
+          tol_rel_obj = .001,
+          init = .1,
+          output_samples = iter_sampling * n_chains,
+          ...
+        )
+      }
     }
     return(stan_fit)
   }
 
+#------------------------------------------------------------------------------>
+# Function to Compute the LOO-CV for Independent Stan Model and Data
+#------------------------------------------------------------------------------>
 loo_gVAR <- function(stan_fit, data, n_cores = 1) {
   c <- class(stan_fit)
   if (attr(c, "package") == "rstan") {
