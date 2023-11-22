@@ -271,7 +271,7 @@ log_lik_0 <-
 
 chain_ids <- var_lkj_fit$draws("Beta") %>% 
   as_draws_df() %>% 
-  select(.chain) %>% unlist()
+  dplyr::select(.chain) %>% unlist()
 
 loo_0 <- loo(log_lik_0, r_eff = relative_eff(log_lik_0, chain_ids)
 )
@@ -368,7 +368,11 @@ bf$log_BF
 
 
 ### Compare Models for same True Parameters
+
+Simulate data from same model, slightly different DGP, strongly different DGP
 ```{r}
+l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+
 gvar_mod1 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
 gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
 gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
@@ -407,6 +411,7 @@ priors <- list(
 )
 ```
 
+Fit networks 
 ```{r message=FALSE}
 net_1a_fit <- fit_gVAR_stan(data = data_1a, priors = priors, iter_sampling = 2000)
 net_1b_fit <- fit_gVAR_stan(data = data_1b, priors = priors, iter_sampling = 2000)
@@ -429,9 +434,9 @@ beta_post_3 <-
 ```
 
 ```{r}
-a <- beta_post_1a - beta_post_1b %>% as.data.frame()
-b <- a^2
-c <- 
+# a <- beta_post_1a - beta_post_1b %>% as.data.frame()
+# b <- a^2
+# c <- 
 ```
 
 
@@ -521,6 +526,8 @@ model_name <- "chisqr_diff_test"
 n_chains <- 4
 ```
 
+
+This now "runs", but the chains don't really mix and everything is broken. 
 ```{r}
 # Compile model
 diff_test_model <- rstan::stan_model(
