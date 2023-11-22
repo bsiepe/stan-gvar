@@ -177,3 +177,89 @@ loo_gVAR <- function(stan_fit, data, n_cores = 1) {
   loo <- loo::loo(log_lik, r_eff = relative_eff(log_lik, chain_ids))
   return(loo)
 }
+
+
+
+
+# -------------------------------------------------------------------------
+# Helper functions for model evaluation -----------------------------------
+# -------------------------------------------------------------------------
+# Convert Stan fit to array -----------------------------------------------
+# TODO should maybe be flexible to incorporate something else besides Sigma?
+# i.e. also theta (precision matrix?)
+
+stan_fit_convert <- 
+  function(stan_fit){
+   # check fitting backend
+   c <- class(stan_fit)
+    
+   if (attr(c, "package") == "rstan") {  
+    draws_beta <- posterior::as_draws_matrix(rstan::extract(
+       stan_fit, pars = "Beta", permuted = FALSE
+     ))
+    draws_sigma <- posterior::as_draws_matrix(rstan::extract(
+       stan_fit, pars = "Sigma", permuted = FALSE
+     ))
+    draws_rho <- posterior::as_draws_matrix(rstan::extract(
+       stan_fit, pars = "Rho", permuted = FALSE
+     ))
+  } 
+   else{
+    draws_beta <- posterior::as_draws_matrix(stan_fit$draws("Beta"))
+    draws_sigma <- posterior::as_draws_matrix(stan_fit$draws("Sigma"))
+    draws_rho <- posterior::as_draws_matrix(stan_fit$draws("Rho"))
+  }
+  # Convert to array of p x p matrices
+  nvar <- sqrt(ncol(draws_beta)) 
+   
+  # Beta 
+  split_beta <- split(draws_beta, seq(nrow(draws_beta)))
+  beta_l <- lapply(split_beta, function(x) {
+    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
+  })
+  beta_array <- array(unlist(beta_l), dim = c(nvar, nvar, nrow(draws_beta)))
+  
+  # Sigma
+  split_sigma <- split(draws_sigma, seq(nrow(draws_sigma)))
+  sigma_l <- lapply(split_sigma, function(x) {
+    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
+  })
+  sigma_array <- array(unlist(sigma_l), dim = c(nvar, nvar, nrow(draws_sigma)))
+  
+  # Rho
+  split_rho <- split(draws_rho, seq(nrow(draws_rho)))
+  rho_l <- lapply(split_rho, function(x) {
+    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
+  })
+  rho_array <- array(unlist(rho_l), dim = c(nvar, nvar, nrow(draws_rho)))
+  
+  # Return
+  return(list(beta = beta_array, sigma = sigma_array, rho = rho_array))
+  
+}
+
+
+
+# Compare fit to DGP ------------------------------------------------------
+array_compare_dgp <- function(post_samples, 
+                              dgp = NULL) {
+
+  # Compute mean for each array element across the third dimension 
+  # of post_samples
+  post_samples_mean <- lapply(post_samples, function(x) {
+    apply(x, c(1, 2), mean)
+  })
+  post_samples_median <- lapply(post_samples, function(x) {
+    apply(x, c(1, 2), median)
+  })
+
+  
+  list(mean_est = post_samples_mean, 
+       median_est = post_samples_median)
+}
+
+
+   
+   
+   
+   
