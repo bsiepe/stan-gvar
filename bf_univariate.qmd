@@ -19,6 +19,7 @@ library(BGGM)
 library(tidyverse)
 library(tsnet)
 library(mvtnorm)
+library(BFpack)
 ```
 
 ## Data generation
@@ -98,8 +99,8 @@ generate_prior_matrices <- function(nvar, var_prior, reps) {
   return(prior_arr)
 }
 
-prior_a <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 1000)
-prior_b <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 1000)
+prior_a <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 10000)
+prior_b <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 10000)
 
 ```
 
@@ -164,7 +165,7 @@ posterior_diff_dist1ab <- estimate_multivariate_normal(diff_posterior1ab)
 
 ```
 
-# Bayes Factor
+## Bayes Factor
 Now we can compute the Bayes Factor.
 ```{r}
 approx_diff_density <- function(mean_vector, cov_matrix, point) {
@@ -186,5 +187,150 @@ post_dens1ab <- approx_diff_density(mean_vector = posterior_diff_dist1ab$mean_ve
                                     cov_matrix = posterior_diff_dist1ab$cov_matrix,
                                     point = 0)
 
+# Does not work well because the posterior covariances are too tiny
 
 ```
+
+Try with BFpack: Don't understand yet what happens here. 
+```{r}
+BFpack::BF(x = posterior_diff_dist13$mean_vector,
+           Sigma = posterior_diff_dist13$cov_matrix,
+           n = 10000)
+```
+
+
+
+
+# New Idea: Collapsing all differences to a single distribution
+## Prior
+```{r}
+v1ab <- as.vector(diff_posterior1ab)
+v_prior <- as.vector(diff_prior)
+plot(density(sqrt(v1ab^2)))
+plot(density(sqrt(v_prior^2)))
+
+
+```
+
+
+
+
+# New Idea: Using the contrast matrix as Williams et al. 2020
+Implemented here: 
+https://github.com/donaldRwilliams/BGGM/blob/3768928273d94ed6c84b2b25f29782cc68452d38/R/ggm_compare_bf.default.R#L203
+
+
+Try this on the partial correlations: 
+```{r}
+# args
+groups <- 2   # compare 2 networks
+
+# Get samples
+post_samp <- list()
+post_samp[[1]] <- fit1_a$fit
+post_samp[[2]] <- fit3$fit
+
+prior_samp <- list()
+prior_smp_a <- BGGM::plot_prior(prior_sd = 0.25, iter = 5000)
+prior_smp_b <- BGGM::plot_prior(prior_sd = 0.25, iter = 5000)
+prior_samp[[1]] <- prior_smp_a$plot_env$prior_samp$fisher_z[1,2,]
+prior_samp[[2]] <- prior_smp_b$plot_env$prior_samp$fisher_z[1,2,]
+
+# Number of variables
+p <- 6
+
+# store pcor diff
+pcor_diff <- BF_01_mat <- matrix(0, p, p)
+
+
+# upper triangular elements
+indices <- which(upper.tri(diag(p)), arr.ind = TRUE )
+
+# Get hypotheses as words
+groups_as_words <- BGGM:::numbers2words(1:groups)
+hyp <- paste(groups_as_words, sep = " ", collapse = "=")
+framed <- BGGM:::framer(hyp)
+
+# Create contrast matrix
+mats <- BGGM:::create_matrices(framed = framed,
+                          varnames = groups_as_words)
+
+
+
+
+
+```
+
+
+Now compute Bayes Factors:
+```{r}
+
+# loop through upper triangular
+for(i in seq_len(nrow(indices))){
+
+    rho_ij <- indices[i,]
+
+    # start
+    post_group <-  post_samp[[1]]$fisher_z[ rho_ij[1], rho_ij[2], (51:(iter + 50))]
+    prior_group <-  prior_samp[[1]]
+
+    # combined groups
+    for(j in 2:(groups)){
+      post_group <-  cbind(post_group,  post_samp[[j]]$fisher_z[ rho_ij[1], rho_ij[2], (51:(iter + 50))])
+      prior_group <-  cbind(prior_group,  prior_samp[[j]])
+    }
+
+    # posterior covariance
+    cov_post <- cov(post_group)
+
+    # prior covariance
+    cov_prior <- cov(prior_group)
+
+    # posterior mean
+    post_mean <- colMeans(post_group)
+
+    # tranformed posterior
+    mu_post <- mats$R_e %*% post_mean
+    s_post <- mats$R_e %*% cov_post %*% t(mats$R_e)
+
+    # transformed prior
+    mu_prior <- mats$R_e %*% rep(0, groups)
+
+    s_prior <- mats$R_e %*% cov_prior %*% t(mats$R_e)
+
+    # bayes factor
+    log_BF <- mvnfast::dmvn(X = t(mats$r_e),
+                            mu = mu_post,
+                            sigma = s_post,
+                            log = TRUE) -
+              mvnfast::dmvn(X = t(mats$r_e),
+                            mu = mu_prior,
+                            sigma = s_prior,
+                            log = TRUE)
+
+    BF_01_mat[ rho_ij[1], rho_ij[2] ] <- exp(log_BF)
+
+    if(groups == 2){
+      pcor_diff[ rho_ij[1], rho_ij[2] ] <-  (BGGM:::z2r(post_mean)[1] - BGGM:::z2r(post_mean)[2])
+        }
+}
+
+# Show BF and pcor_diffs
+BF_01 <-  BGGM:::symmetric_mat(BF_01_mat)
+
+pcor_diff <- BGGM:::symmetric_mat(pcor_diff)
+round(BF_01,2)
+round(pcor_diff,2)
+
+# This makes no sense at all to me.
+
+```
+
+
+
+
+
+
+
+
+
