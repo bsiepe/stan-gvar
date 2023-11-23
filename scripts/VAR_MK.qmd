@@ -375,7 +375,7 @@ Simulate data from same model, slightly different DGP, strongly different DGP
 l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
 
 gvar_mod1 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
-gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
+gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
 gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
 
 t <- 500
@@ -453,155 +453,185 @@ beta_post_2 <-
   rstan::extract(net_2_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
 beta_post_3 <-
   rstan::extract(net_3_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
-
-beta_post_1a[c(2,5),c(3,1)]
 ```
 
 ```{r}
-compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
-  
-  # with bootstrapping
-  if (bootstrap_samples > 0) {
-  rows1 <- sample(1:nrow(mat1), size = bootstrap_samples*ncol(mat1), replace = TRUE)
-  rows2<- sample(1:nrow(mat2), size = bootstrap_samples*ncol(mat1), replace = TRUE)
-  cols <- rep.int(1:ncol(mat1), times = bootstrap_samples)
-
-  col1 <- purrr::map2(.x = rows1, .y = cols, .f = function(.x,.y){mat1[.x, .y]}) %>% 
-    unlist()
-  col2 <- purrr::map2(.x = rows2, .y = cols, .f = function(.x,.y){mat2[.x, .y]}) %>% 
-    unlist()
-  
-  diff_post <- (col1 - col2) ^ 2 %>%
-    matrix(., nrow = bootstrap_samples, ncol = ncol(mat1), byrow = TRUE) %>%
-    apply(., 1, sum) %>%
-    sqrt()
-
-  # no bootstrappping
-  }else{
-    diff_post <- mat1 - mat2
-  attr(diff_post, which = "class") <- "matrix"
-  diff_post <- diff_post %>% 
-    apply(., 2, function(x) {
-      x ^ 2
-    }) %>%
-    apply(., 1, sum) %>% sqrt()
-  }
-  
-    diff_prior <-
-    (rnorm(
-      n = nrow(mat1) * ncol(mat1),
-      mean = 0,
-      sd = 0.5
-    ) -
-      rnorm(
-        n = nrow(mat1) * ncol(mat1),
-        mean = 0,
-        sd = 0.5
-      )) ^ 2 %>%
-    matrix(., nrow = nrow(mat1), ncol = ncol(mat1)) %>%
-    apply(., 1, sum) %>% 
-    sqrt()
-  
-  diff_null <-
-    (rnorm(
-        n = 2000,
-        mean = 0,
-        sd = 0.05
-    ) -
-      rnorm(
-        n = 2000,
-        mean = 0,
-        sd = 0.05
-      )) ^ 2 %>%
-    matrix(., nrow = nrow(mat1), ncol = ncol(mat1)) %>%
-    apply(., 1, sum) %>%
-    sqrt()
+compare_mat <-
+  function(mat1,
+           mat2,
+           bootstrap_samples = 0,
+           plot = TRUE) {
+    # with bootstrapping
+    if (bootstrap_samples > 0) {
+      rows1 <-
+        sample(1:nrow(mat1),
+               size = bootstrap_samples * ncol(mat1),
+               replace = TRUE)
+      rows2 <-
+        sample(1:nrow(mat2),
+               size = bootstrap_samples * ncol(mat1),
+               replace = TRUE)
+      cols <- rep.int(1:ncol(mat1), times = bootstrap_samples)
+      
+      col1 <-
+        purrr::map2(
+          .x = rows1,
+          .y = cols,
+          .f = function(.x, .y) {
+            mat1[.x, .y]
+          }
+        ) %>%
+        unlist()
+      col2 <-
+        purrr::map2(
+          .x = rows2,
+          .y = cols,
+          .f = function(.x, .y) {
+            mat2[.x, .y]
+          }
+        ) %>%
+        unlist()
+      
+      diff_post <- (col1 - col2) %>%
+        matrix(.,
+               nrow = bootstrap_samples,
+               ncol = ncol(mat1),
+               byrow = TRUE) %>%
+        apply(., 1, sum)
+      
+      diff_prior <-
+        rnorm(
+          n = length(col1),
+          mean = 0,
+          sd = 0.5
+        ) -
+        rnorm(
+          n = length(col2),
+          mean = 0,
+          sd = 0.5
+        ) %>%
+        matrix(.,
+               nrow = bootstrap_samples,
+               ncol = ncol(mat1)) %>%
+        apply(., 1, sum)
+      
+      # no bootstrappping
+    } else{
+      diff_post <- mat1 - mat2
+      attr(diff_post, which = "class") <- "matrix"
+      diff_post <- diff_post %>%
+        apply(., 1, sum)
+      
+      diff_prior <-
+        rnorm(n = nrow(mat1) * ncol(mat1),
+              mean = 0,
+              sd = 0.5) -
+        rnorm(n = nrow(mat1) * ncol(mat1),
+              mean = 0,
+              sd = 0.5) %>%
+        matrix(., nrow = nrow(mat1), ncol = ncol(mat1)) %>%
+        apply(., 1, sum)
+      
+    }
+    # distribution for null rope range
+    diff_null <-
+      rnorm(n = 500 * ncol(mat1),
+            mean = 0,
+            sd = 0.01) -
+      rnorm(n = 500 * ncol(mat1),
+            mean = 0,
+            sd = 0.01) %>%
+      matrix(., nrow = nrow(mat1), ncol = ncol(mat1)) %>%
+      apply(., 1, sum)
     
     null_ci <- bayestestR::hdi(diff_null)
-  
-  # plot prior vs. posterior
-  if (isTRUE(plot)) {
-    plot <- data.frame(posterior = diff_post, prior = diff_prior) %>%
-      ggplot2::ggplot() +
-      ggplot2::geom_density(aes(posterior),
-                            fill = "red",
-                            alpha = .5) +
-      ggplot2::geom_density(aes(prior),
-                            fill = "blue",
-                            alpha = .5) +
-      geom_vline(xintercept = null_ci$CI_high) +
-      # ggplot2::geom_histogram(aes(posterior),
-      #                       fill = "red",
-      #                       alpha = .5, 
-      #                       binwidth = .01) +
-      # ggplot2::geom_histogram(aes(prior),
-      #                       fill = "blue",
-      #                       alpha = .5,
-      #                       binwidth = .01) +
-      ggplot2::xlim(0, 3) +
-      ggplot2::ylim(0, NA) +
-      labs(x = "Difference", y = "Density")
     
-    print(plot)
+    # plot prior vs. posterior
+    if (isTRUE(plot)) {
+      plot <- data.frame(posterior = diff_post, prior = diff_prior) %>%
+        ggplot2::ggplot() +
+        ggplot2::geom_density(aes(posterior),
+                              fill = "red",
+                              alpha = .5) +
+        ggplot2::geom_density(aes(prior),
+                              fill = "blue",
+                              alpha = .5) +
+        geom_vline(xintercept = null_ci$CI_low) +
+        geom_vline(xintercept = null_ci$CI_high) +
+        # ggplot2::geom_histogram(aes(posterior),
+        #                       fill = "red",
+        #                       alpha = .5,
+        #                       binwidth = .01) +
+        # ggplot2::geom_histogram(aes(prior),
+        #                       fill = "blue",
+        #                       alpha = .5,
+        #                       binwidth = .01) +
+        ggplot2::xlim(-4, 4) +
+        ggplot2::ylim(0, 3) +
+        labs(x = "Difference", y = "Density")
+      
+      print(plot)
+    }
+    
+    # compute bayesfactor
+    bf <-
+      bayestestR::bf_parameters(
+        posterior = diff_post,
+        prior = diff_prior,
+        #null = 0,
+        null = c(null_ci$CI_low, null_ci$CI_high),
+        direction = 0
+      )
+    print(bf)
+    # print(paste("BF:", exp(bf$log_BF)))
+    # print(paste("log-BF:", round(bf$log_BF, 2)))
+    
+    
+    return(bf$log_BF)
+    
+    # clean up
+    rm(col1, col2, diff_post, diff_prior, diff_null)
   }
-  
-  # compute bayesfactor
-  bf <-
-    bayestestR::bf_parameters(
-      posterior = diff_post,
-      prior = diff_prior,
-      null = c(0,null_ci$CI_high),
-      direction = ">"
-    )
-  print(bf)
-  # print(paste("BF:", exp(bf$log_BF)))
-  # print(paste("log-BF:", round(bf$log_BF, 2)))
-  
-  
-  return(bf$log_BF)
-  
-  # clean up
-  rm(col1, col2, diff_post, diff_prior, diff_null)
-}
 ```
 
 ```{r}
 compare_mat(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
-  bootstrap_samples = 4e4,
+  bootstrap_samples = 1e4,
   plot = TRUE
 )
 compare_mat(
   mat1 = beta_post_1a,
   mat2 = beta_post_2,
   bootstrap_samples = 1e4,
-  plot = FALSE
+  plot = TRUE
 )
 compare_mat(
   mat1 = beta_post_1a,
   mat2 = beta_post_3,
   bootstrap_samples = 1e4,
-  plot = FALSE
+  plot = TRUE
 ) 
 ```
 
 ```{r}
-log_BFs_boot <- rep(NA, 20)
+n <- 50
+log_BFs_boot <- rep(NA, n)
 for (i in 1:20) {
   log_BFs_boot[i] <- compare_mat(
     mat1 = beta_post_1a,
-    mat2 = beta_post_1b,
-    bootstrap_samples = 1e4,
+    mat2 = beta_post_2,
+    bootstrap_samples = 0,
     plot = FALSE
   )
 }
 
-log_BFs <- rep(NA, 20)
+log_BFs <- rep(NA, n)
 for (i in 1:20) {
   log_BFs[i] <- compare_mat(
     mat1 = beta_post_1a,
-    mat2 = beta_post_1b,
+    mat2 = beta_post_3,
     bootstrap_samples = 1e4,
     plot = FALSE
   )
@@ -609,6 +639,7 @@ for (i in 1:20) {
 ```
 
 ```{r}
+hist((log_BFs))
 sd(log_BFs)
 sd(log_BFs_boot)
 data.frame(log_BFs = log_BFs, log_BFs_boot = log_BFs_boot) %>%
@@ -616,14 +647,16 @@ data.frame(log_BFs = log_BFs, log_BFs_boot = log_BFs_boot) %>%
       ggplot2::geom_histogram(aes(log_BFs),
                             fill = "red",
                             alpha = .5,
-                            binwidth = 1) +
+                            binwidth = .1) +
       ggplot2::geom_histogram(aes(log_BFs_boot),
                             fill = "blue",
                             alpha = .5,
-                            binwidth = 1) +
-      ggplot2::xlim(-20, 0)
+                            binwidth = .1) +
+      ggplot2::xlim(-5, 0)
 
 ```
+
+
 
 
 
