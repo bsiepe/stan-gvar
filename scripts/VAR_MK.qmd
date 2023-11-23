@@ -293,11 +293,11 @@ data_3 <- subset(data, id == 3)
 # (should perform detrending etc. in a real use case)
 net_1_bggm <- BGGM::var_estimate(data_1[,-1],
                             rho_sd = 0.25, 
-                            Beta_sd = 0.5,
+                            beta_sd = 0.5,
                             iter = 50000)
 net_3_bggm <- BGGM::var_estimate(data_3[,-1],
                             rho_sd = 0.25, 
-                            Beta_sd = 0.5,
+                            beta_sd = 0.5,
                             iter = 50000)
 
 ```
@@ -519,7 +519,7 @@ compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
     
     null_ci <- bayestestR::hdi(diff_null)
   
-  # plot prior vs. postirior
+  # plot prior vs. posterior
   if (isTRUE(plot)) {
     plot <- data.frame(posterior = diff_post, prior = diff_prior) %>%
       ggplot2::ggplot() +
@@ -539,7 +539,8 @@ compare_mat <- function(mat1, mat2, bootstrap_samples = 0, plot = TRUE) {
       #                       alpha = .5,
       #                       binwidth = .01) +
       ggplot2::xlim(0, 3) +
-      ggplot2::ylim(0, NA)
+      ggplot2::ylim(0, NA) +
+      labs(x = "Difference", y = "Density")
     
     print(plot)
   }
