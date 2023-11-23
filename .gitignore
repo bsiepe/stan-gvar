@@ -4,3 +4,6 @@
 .Ruserdata
 *.exe
 *.log
+*.out
+*.inp
+*.dat
