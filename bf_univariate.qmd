@@ -1,0 +1,190 @@
+---
+title: "bf_univariate"
+format: html
+editor: visual
+---
+
+# Purpose
+
+In this document, we try to implement a univariate Bayes Factor (that extends to testing multiple variables at the same time). It is oriented at Williams et al. (Psych Methods, 2021).
+
+
+We assume normality, either for the regression coefficients or for the Fisher-z transformed variables.
+Then, we just compute the differences between all edges in the two networks to obtain a posterior (mean and covariance matrix).
+The prior under the H0 is given by sampling from the prior distribution and obtaining a mean and covariance matrix. 
+
+# Preparations
+```{r}
+library(BGGM)
+library(tidyverse)
+library(tsnet)
+library(mvtnorm)
+```
+
+## Data generation
+Simulate data.
+```{r}
+l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+
+gvar_mod1 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
+gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
+gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
+
+t <- 200
+nvar <- ncol(gvar_mod1$beta)
+
+data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+
+data_1b <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+
+
+data_2 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod2$beta,
+                                        kappa = gvar_mod2$kappa)
+
+data_3 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod3$beta,
+                                        kappa = gvar_mod3$kappa)
+
+
+```
+
+## Estimation
+Estimate a BGGM GVAR model on each dataset.
+```{r}
+pcor_prior <- 0.25
+var_prior <- 0.5
+it <- 50000
+
+fit1_a <- BGGM::var_estimate(as.data.frame(data_1a),
+                   rho_sd = pcor_prior, 
+                   beta_sd = var_prior,
+                   iter = it)
+
+fit1_b <- BGGM::var_estimate(as.data.frame(data_1b),
+                   rho_sd = pcor_prior, 
+                   beta_sd = var_prior,
+                   iter = it)
+fit2 <- BGGM::var_estimate(as.data.frame(data_2),
+                   rho_sd = pcor_prior, 
+                   beta_sd = var_prior,
+                   iter = it)
+fit3 <- BGGM::var_estimate(as.data.frame(data_3),
+                   rho_sd = pcor_prior, 
+                   beta_sd = var_prior,
+                   iter = it)
+
+```
+
+Sample from the prior distribution:
+```{r}
+generate_prior_matrices <- function(nvar, var_prior, reps) {
+  # Create a 3D array to store the matrices
+  prior_arr <- array(NA, dim = c(nvar, nvar, reps))
+  
+  # Generate and store matrices
+  for (i in 1:reps) {
+    # Generate a nvar x nvar matrix with values sampled from a normal distribution
+    matrix_samp <- matrix(rnorm(nvar^2, mean = 0, sd = var_prior), nrow = nvar)
+    
+    # Store the matrix as a slice in the 3D array
+    prior_arr[,,i] <- matrix_samp
+  }
+  
+  return(prior_arr)
+}
+
+prior_a <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 1000)
+prior_b <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 1000)
+
+```
+
+Now create a function that computes the difference between each matrix in two 3d arrays, and a function that then estimates the multivariate normal distribution of this difference matrix.
+```{r}
+compute_diff <- function(sample_mat_a, sample_mat_b) {
+  
+  # Number of repetitions
+  nreps <- dim(sample_mat_a)[3]
+  
+  # Create a 3D array to store the matrices
+  diff_arr <- array(NA, dim = c(nvar, nvar, nreps))
+  
+  # Generate and store matrices
+  for (i in 1:nreps) {
+    matrix_diff <- sample_mat_a[,,i] - sample_mat_b[,,i]
+    
+    # Store the matrix as a slice in the 3D array
+    diff_arr[,,i] <- matrix_diff
+  }
+  
+  return(diff_arr)
+}
+
+# Estimate the distribution of the difference matrices
+# Estimate the multivariate normal distribution
+estimate_multivariate_normal <- function(sample_array) {
+  # Reshape the 3D array to a 2D matrix (variables in columns, samples in rows)
+  data_2d <- matrix(sample_array, 
+                    ncol = dim(sample_array)[1]*dim(sample_array)[2], 
+                    nrow = dim(sample_array)[3], byrow = TRUE)
+  
+  # Calculate the sample mean vector
+  mean_vector <- colMeans(data_2d)
+  
+  # Calculate the sample covariance matrix
+  cov_matrix <- cov(data_2d)
+  
+  # Return the estimated mean vector and covariance matrix
+  return(list(mean_vector = mean_vector, cov_matrix = cov_matrix))
+}
+
+
+
+
+```
+
+Compute the difference between the prior matrices and estimate their distribution
+```{r}
+diff_prior <- compute_diff(prior_a, prior_b)
+prior_diff_dist <- estimate_multivariate_normal(diff_prior)
+# prior mean vector should be 0
+```
+
+Now do the same for the posterior differences
+```{r}
+diff_posterior13 <- compute_diff(fit1_a$fit$beta, fit3$fit$beta)
+diff_posterior1ab <- compute_diff(fit1_a$fit$beta, fit1_b$fit$beta)
+posterior_diff_dist13 <- estimate_multivariate_normal(diff_posterior13)
+posterior_diff_dist1ab <- estimate_multivariate_normal(diff_posterior1ab)
+
+
+```
+
+# Bayes Factor
+Now we can compute the Bayes Factor.
+```{r}
+approx_diff_density <- function(mean_vector, cov_matrix, point) {
+   
+  point_vec <- rep(point, length(mean_vector))
+  # Calculate the normal density at the specified point
+  density_value <- mvtnorm::dmvnorm(x = point_vec, mean = mean_vector, sigma = cov_matrix)
+  
+  return(density_value)
+} 
+
+prior_dens <- approx_diff_density(mean_vector = rep(0, nvar^2), 
+                                  cov_matrix = prior_diff_dist$cov_matrix, 
+                                  point = 0)
+post_dens13 <- approx_diff_density(mean_vector = posterior_diff_dist13$mean_vector, 
+                                 cov_matrix = posterior_diff_dist13$cov_matrix, 
+                                 point = 0)
+post_dens1ab <- approx_diff_density(mean_vector = posterior_diff_dist1ab$mean_vector,
+                                    cov_matrix = posterior_diff_dist1ab$cov_matrix,
+                                    point = 0)
+
+
+```
