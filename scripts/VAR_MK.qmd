@@ -455,6 +455,11 @@ beta_post_3 <-
   rstan::extract(net_3_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
 ```
 
+
+BS: Please add short descriptions to what you are doing. If not, this will get out of hand very soon. 
+
+So I think now this takes the sum of differences per matrix. This is a bit weird, because large positive and negative differences could cancel out in a matrix, right?
+
 ```{r}
 compare_mat <-
   function(mat1,
@@ -473,6 +478,8 @@ compare_mat <-
                replace = TRUE)
       cols <- rep.int(1:ncol(mat1), times = bootstrap_samples)
       
+      # BS: This bootstraps columns (i.e. variables), right?
+      # But it makes more sense to keep the full matrices intact and bootstrap rows (i.e. samples)
       col1 <-
         purrr::map2(
           .x = rows1,
@@ -503,12 +510,12 @@ compare_mat <-
         rnorm(
           n = length(col1),
           mean = 0,
-          sd = 0.5
+          sd = 0.25 
         ) -
         rnorm(
           n = length(col2),
           mean = 0,
-          sd = 0.5
+          sd = 0.25
         ) %>%
         matrix(.,
                nrow = bootstrap_samples,
@@ -548,13 +555,19 @@ compare_mat <-
     
     # plot prior vs. posterior
     if (isTRUE(plot)) {
-      plot <- data.frame(posterior = diff_post, prior = diff_prior) %>%
+      
+      # combine diff_post and diff_prior in a single column of a dataframe
+      # with another column as an indicator if it is a posterior or prior
+      # distribution
+      df_samples <- data.frame(posterior = diff_post,
+                               prior = diff_prior) %>% 
+        tidyr::pivot_longer(cols = c(posterior, prior),
+                            names_to = "distribution",
+                            values_to = "value")
+
+      plot <- df_samples %>%
         ggplot2::ggplot() +
-        ggplot2::geom_density(aes(posterior),
-                              fill = "red",
-                              alpha = .5) +
-        ggplot2::geom_density(aes(prior),
-                              fill = "blue",
+        ggplot2::geom_density(aes(value, fill = distribution),
                               alpha = .5) +
         geom_vline(xintercept = null_ci$CI_low) +
         geom_vline(xintercept = null_ci$CI_high) +
@@ -568,7 +581,8 @@ compare_mat <-
         #                       binwidth = .01) +
         ggplot2::xlim(-4, 4) +
         ggplot2::ylim(0, 3) +
-        labs(x = "Difference", y = "Density")
+        labs(x = "Difference", y = "Density")+
+        theme_light()
       
       print(plot)
     }
