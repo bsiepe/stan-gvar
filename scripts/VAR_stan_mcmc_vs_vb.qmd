@@ -1,0 +1,201 @@
+---
+title: "GVAR - Model Fitting and Results"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    collapsed: no
+    smooth_scroll: yes
+---
+
+```{r setup, include = FALSE}
+# Libraries
+packages <- c(
+  "tidyverse",
+  "devtools",
+  "rmarkdown",
+  "psych",
+  "cmdstanr",
+  "rstan",
+  "loo",
+  "bayesplot",
+  "posterior",
+  "bayestestR",
+  "here",
+  "tsnet",
+  "BGGM",
+  "graphicalVAR",
+  "mvtnorm"
+)
+#remotes::install_github("donaldRwilliams/BGGM")
+#devtools::install_github("bsiepe/tsnet")
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(packages, update = F, character.only = T)
+
+source(here("scripts","functions.R"))
+set.seed(35037)
+```
+
+### Simulate data
+```{r}
+# Additionally, use data from our preprint
+l_graphs <- readRDS(here("data", "l_graphs.rds"))
+
+# Choose graph 6
+gvar_mod <- l_graphs$graph6
+
+# Add partial correlations
+gvar_mod$PCC <- -cov2cor(gvar_mod$kappa)
+diag(gvar_mod$PCC) <- 0
+
+# Simulate data
+gvar_dat <- 
+  graphicalVAR::graphicalVARsim(nTime = 200,
+                                beta = gvar_mod$beta,
+                                kappa = gvar_mod$kappa) %>% 
+  apply(., 2, scale)
+```
+
+## Fit VAR Model in Stan with MCMC
+```{r}
+fit_mcmc <- fit_gVAR_stan(data = gvar_dat,
+                          backend = "rstan", 
+                          method = "sampling")
+```
+
+## Effective sample size (ESS) & Rhat Plots
+```{r}
+# color scheme
+color_scheme_set(scheme = "purple")
+# Effective sample sizes
+plot_neff <-
+  mcmc_neff_hist(bayesplot::neff_ratio(fit_mcmc), binwidth = .01) +
+  labs(title = "A") +
+  guides(color = "none", fill = "none") +
+  theme(
+    legend.text = element_blank(),
+    legend.key = element_blank(),
+    title = element_text(size = 16, face = "bold")
+  )
+# Rhat
+# BS: Why does this have missings?
+plot_rhat <-
+  bayesplot::mcmc_rhat_hist(bayesplot::rhat(fit_mcmc)) +
+  labs(title = "B") +
+  guides(color = "none", fill = "none") +
+  theme(
+    legend.text = element_blank(),
+    legend.key = element_blank(),
+    title = element_text(size = 16, face = "bold")
+  ) +
+  yaxis_text(on = TRUE)
+# Combined plot
+plot_diagnostics <- gridExtra::grid.arrange(plot_neff, plot_rhat, ncol = 2)
+```
+
+## Parameter Recovery
+
+### Betas
+```{r}
+bayesplot::ppc_intervals(
+  y = gvar_mod$beta %>% as.vector(),
+  yrep = rstan::extract(fit_mcmc, "Beta", permuted = FALSE) %>% posterior::as_draws_matrix()
+  )
+```
+
+### Partial Correlations
+```{r}
+bayesplot::ppc_intervals(
+  y = gvar_mod$PCC %>% as.vector(),
+  yrep = rstan::extract(fit_mcmc, "Rho", permuted = FALSE) %>% posterior::as_draws_matrix()
+  )
+```
+
+***
+
+# Compare Variational Inference
+## Fit VAR Model in Stan with MCMC
+```{r}
+fit_vb <- fit_gVAR_stan(
+  data = gvar_dat,
+  backend = "rstan", 
+  method = "variational")
+```
+
+## Parameter Recovery
+### Betas
+```{r}
+bayesplot::ppc_intervals(
+  y = gvar_mod$beta %>% as.vector(),
+  yrep = rstan::extract(fit_vb, "Beta", permuted = FALSE) %>% posterior::as_draws_matrix()
+  )
+```
+
+### Partial Correlations
+```{r}
+bayesplot::ppc_intervals(
+  y = gvar_mod$PCC %>% as.vector(),
+  yrep = rstan::extract(fit_vb, "Rho", permuted = FALSE) %>% posterior::as_draws_matrix()
+  )
+```
+
+
+
+## Comparison: MCMC vs. Variational
+### Beta
+```{r}
+draws_Beta_mcmc <-
+  rstan::extract(fit_vb, "Beta", permuted = FALSE) %>%
+  posterior::summarise_draws("median") %>% dplyr::select(median) %>% unlist()
+draws_Beta_vb <-
+  rstan::extract(fit_mcmc, "Beta", permuted = FALSE) %>%
+  posterior::as_draws_matrix() %>%
+  posterior::summarise_draws("median") %>% dplyr::select(median) %>% unlist()
+
+plot(draws_Beta_vb, draws_Beta_mcmc)
+abline(coef = c(0, 1))
+```
+
+### Rho
+```{r}
+draws_Rho_mcmc <-
+  rstan::extract(fit_vb, "Rho", permuted = FALSE) %>%
+  posterior::summarise_draws("median") %>% dplyr::select(median) %>% unlist()
+draws_Rho_vb <-
+  rstan::extract(fit_mcmc, "Rho", permuted = FALSE) %>%
+  posterior::as_draws_matrix() %>%
+  posterior::summarise_draws("median") %>% dplyr::select(median) %>% unlist()
+
+plot(draws_Rho_vb, draws_Rho_mcmc)
+abline(coef = c(0, 1))
+```
+
+
+
+### Betas
+```{r}
+bayesplot::ppc_intervals(
+  y = gvar_mod$beta %>% as.vector(),
+  yrep = rstan::extract(fit_mcmc, "Beta", permuted = FALSE) %>% posterior::as_draws_matrix()
+  )+
+  ylim(-.6,.7)
+bayesplot::ppc_intervals(
+  y = gvar_mod$beta %>% as.vector(),
+  yrep = rstan::extract(fit_vb, "Beta", permuted = FALSE) %>% posterior::as_draws_matrix()
+  )+
+  ylim(-.6,.7)
+```
+
+### Partial Correlations
+```{r}
+bayesplot::ppc_intervals(
+  y = gvar_mod$PCC %>% as.vector(),
+  yrep = rstan::extract(fit_mcmc, "Rho", permuted = FALSE) %>% posterior::as_draws_matrix()
+  )+
+  ylim(-.7,.6)
+bayesplot::ppc_intervals(
+  y = gvar_mod$PCC %>% as.vector(),
+  yrep = rstan::extract(fit_vb, "Rho", permuted = FALSE) %>% posterior::as_draws_matrix()
+  ) +
+  ylim(-.7,.6)
+```

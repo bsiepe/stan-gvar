@@ -745,8 +745,8 @@ loo_compare(net_2_data_2_loo, net_2_data_1_loo)
 
 ```{r}
 net_1_data_1_logml <- bridgesampling::bridge_sampler(
-  samples = net_1_fit,
-  stan_fit = net_1_fit
+  samples = net_1a_fit,
+  stan_fit = net_1a_fit
 )$logml
 
 net_1_data_2_logml <- bridgesampling::bridge_sampler(
@@ -791,60 +791,4 @@ var_lkj_LML <- bridgesampling::bridge_sampler(
 bridgesampling::logml(var_lkj_LML)
 var_lkj_LML$logml
 ```
-
-
-
-
-# Compare Variational Inference
-```{r}
-source(here("scripts","functions.R"))
-Y <- gvar_dat %>% apply(., 2, scale)
-# Run variational
-var_lkj_fit_vb <- fit_gVAR_stan(data = Y,backend = "rstan", method = "variational")
-# time to fit
-var_lkj_fit_vb$time()$total
-```
-
-```{r}
-medians_Beta_vb <-
-  summary(var_lkj_fit_vb, "Beta") %>% 
-  dplyr::select(median) %>% 
-  unlist() %>% 
-  round(2)
-plot(medians_Beta_vb, medians_beta %>% as.vector())
-abline(coef = c(0,1))
-```
-
-
-```{r}
-medians_rho_vb <-
-  var_lkj_fit_vb$summary("Rho") %>% 
-  dplyr::select(median) %>% 
-  unlist() %>% 
-  round(2)
-
-# This looks abit more ugly now!
-plot(medians_rho_vb, medians_rho %>% as.vector())
-abline(coef = c(0,1))
-```
-
-```{r}
-draws_Beta_vb <- var_lkj_fit_vb$draws("Beta") %>% as_draws_matrix()
-bayesplot::ppc_intervals(gvar_mod$beta %>% as.vector(),draws_beta)+
-    ylim(c(-1,1))
-bayesplot::ppc_intervals(gvar_mod$beta %>% as.vector(),draws_Beta_vb)+
-    ylim(c(-1,1))
-```
-
-```{r}
-draws_rho_vb <- var_lkj_fit_vb$draws("Rho") %>% as_draws_matrix()
-bayesplot::ppc_intervals(gvar_mod$PCC %>% as.vector(),draws_rho)+
-  ylim(c(-.7,.7))
-bayesplot::ppc_intervals(gvar_mod$PCC %>% as.vector(),draws_rho_vb)+
-    ylim(c(-.7,.7))
-```
-
-***
-
-
 

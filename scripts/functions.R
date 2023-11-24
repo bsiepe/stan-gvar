@@ -83,6 +83,11 @@ fit_gVAR_stan <-
            n_chains = 4,
            ...) {
     
+    
+    Y <- data %>% apply(., 2, scale)
+    K <- ncol(data)
+    n_t <- nrow(data)
+    
     # Specify Priors
     if (is.null(priors)){
       prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
@@ -97,10 +102,6 @@ fit_gVAR_stan <-
     }
     
     # Stan Data
-    Y <- data %>% apply(., 2, scale)
-    K <- ncol(data)
-    n_t <- nrow(data)
-    
     stan_data <- list(
       K = K,
       "T" = n_t,
@@ -126,7 +127,6 @@ fit_gVAR_stan <-
           data = stan_data,
           pars = c("Beta_raw"),
           include = FALSE,
-          seed = 35032,
           chains = n_chains,
           cores = n_chains,
           iter = iter_sampling + iter_warmup,
@@ -144,7 +144,6 @@ fit_gVAR_stan <-
           data = stan_data,
           pars = c("Beta_raw"),
           include = FALSE,
-          seed = 35032,
           init = .1,
           tol_rel_obj = .001,
           output_samples = iter_sampling * n_chains,
@@ -160,7 +159,6 @@ fit_gVAR_stan <-
         # Run sampler
         stan_fit <- stan_model$sample(
           data = stan_data,
-          seed = 35032,
           chains = n_chains,
           parallel_chains = n_chains,
           iter_warmup = iter_warmup,
@@ -175,7 +173,6 @@ fit_gVAR_stan <-
       if (method == "variational") {
         stan_fit <- stan_model$variational(
           data = stan_data,
-          seed = 35032,
           tol_rel_obj = .001,
           init = .1,
           output_samples = iter_sampling * n_chains,
