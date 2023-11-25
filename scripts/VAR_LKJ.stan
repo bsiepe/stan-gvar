@@ -53,10 +53,10 @@ transformed parameters{
 model {
   // Priors
   to_vector(Beta_raw) ~ std_normal();    // prior on Beta
-  // mu_Beta          ~ student_t(3,0,2);
-  // sigma_Beta       ~ student_t(3,0,2);
-  L_Theta             ~ lkj_corr_cholesky(1);  // prior on Cholesky factor
-  sigma_theta         ~ student_t(3,0,2);   // prior on sigma_theta
+  //target+=          student_t_lpdf(mu_Beta | 3,0,2);
+  //target+=          student_t_lpdf(sigma_Beta | 3,0,2);
+  target+=            lkj_corr_cholesky_lpdf(L_Theta | 1);  // prior on Cholesky factor
+  target+=            student_t_lpdf(sigma_theta | 3,0,2);   // prior on sigma_theta
   // Priors on partial correlations
   for(i in 1:K){
     for(j in 1:K){
@@ -72,7 +72,7 @@ model {
     for(t in 2:T){
       // BS: What about intercept?
       vector[K] mu = Beta * Y[t-1,];
-      Y[t,] ~ multi_normal_cholesky(mu, Sigma_chol);
+      target += multi_normal_cholesky_lpdf(Y[t,] | mu, Sigma_chol);
     }
   }
 }

@@ -697,7 +697,6 @@ model_name <- "chisqr_diff_test"
 n_chains <- 4
 ```
 
-
 This now "runs", but the chains don't really mix and everything is broken. 
 ```{r}
 # Compile model

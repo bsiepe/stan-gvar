@@ -59,7 +59,7 @@ model {
     for(t in 2:T){
       // BS: What about intercept?
       vector[K] mu = Beta * Y[t-1,];
-      Y[t,] ~ multi_normal(mu, Sigma);
+       target += multi_normal_lpdf(Y[t,] | mu, Sigma);
     }
   }
 }
