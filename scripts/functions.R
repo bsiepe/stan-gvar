@@ -132,8 +132,8 @@ fit_gVAR_stan <-
         stan_fit <- rstan::sampling(
           object = stan_model,
           data = stan_data,
-          pars = c("Beta_raw"),
-          include = FALSE,
+          #pars = c("Beta_raw"),
+          #include = FALSE,
           chains = n_chains,
           cores = n_chains,
           iter = iter_sampling + iter_warmup,
@@ -149,8 +149,8 @@ fit_gVAR_stan <-
         stan_fit <- rstan::vb(
           object = stan_model,
           data = stan_data,
-          pars = c("Beta_raw"),
-          include = FALSE,
+          #pars = c("Beta_raw"),
+          #include = FALSE,
           init = .1,
           tol_rel_obj = .001,
           output_samples = iter_sampling * n_chains,

@@ -68,7 +68,7 @@ editor: visual
 -   "novel" idea
 -   no double comparison needed
 -   works on posterior samples only
--  Daniel: preferred way for now, prior is implied by the distances
+-   Daniel: preferred way for now, prior is implied by the distances
 
 **Issues:**
 

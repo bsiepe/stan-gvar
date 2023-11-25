@@ -1,0 +1,467 @@
+---
+title: "GVAR - Model Fitting and Results"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    collapsed: no
+    smooth_scroll: yes
+---
+
+```{r setup, include = FALSE}
+# Libraries
+packages <- c(
+  "tidyverse",
+  "devtools",
+  "readxl",
+  "lubridate",
+  "rmarkdown",
+  "psych",
+  "cmdstanr",
+  "rstan",
+  "loo",
+  "bayesplot",
+  "posterior",
+  "bayestestR",
+  "here",
+  "rtf",
+  "sjlabelled",
+  "tsnet",
+  "BGGM",
+  "graphicalVAR",
+  "mvtnorm"
+)
+#remotes::install_github("donaldRwilliams/BGGM")
+#devtools::install_github("bsiepe/tsnet")
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(packages, update = F, character.only = T)
+
+source(here("scripts","functions.R"))
+set.seed(35037)
+```
+
+### Simulate data
+```{r}
+gvar_mod <- graphicalVAR::randomGVARmodel(Nvar = 8,
+                              probKappaEdge = .3,
+                              probBetaEdge = .2)
+# DGP matrices
+gvar_mod$beta     # regression weights
+gvar_mod$kappa    # precision matrix
+
+# Simulate data from it
+gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200, 
+                                          beta = gvar_mod$beta,
+                                          kappa = gvar_mod$kappa)
+
+# Additionally, use data from our preprint
+l_graphs <- readRDS(here("data", "l_graphs.rds"))
+
+# Choose graph 6
+gvar_mod <- l_graphs$graph6
+
+# Add partial correlations
+gvar_mod$PCC <- -cov2cor(gvar_mod$kappa)
+diag(gvar_mod$PCC) <- 0
+
+# Simulate data
+gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200, 
+                                          beta = gvar_mod$beta,
+                                          kappa = gvar_mod$kappa)
+
+
+```
+
+Scale data
+```{r}
+Y <- gvar_dat %>% apply(., 2, scale)
+K <- ncol(gvar_dat)
+n_t <- nrow(gvar_dat)
+```
+
+### Specify Priors
+```{r}
+# prior on the locations of partial correlations (scaled Beta location)
+prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
+# prior_Rho_scale <- matrix(sqrt(.5), nrow = K, ncol = K) # sqrt(mu) corresponds to uniform distribution
+prior_Rho_scale <- matrix(.4, nrow = K, ncol = K) # bit more regularization
+
+prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
+```
+
+#### Plot prior choices for scaled beta
+BS: Would be good to not make this uniform, high partial correlations are quite unrealistic.
+Would decrease the prior sd for the partial correlations
+```{r}
+mu <- .5
+sd <- .4
+a <- mu / (sd * sd)
+b <- (1-mu) / (sd * sd)
+hist((rbeta(1e6,a, b) - .5) * 2)
+```
+
+## Fit VAR Model in Stan
+```{r stan data & compilation}
+# prepare stan data
+stan_data <-
+  list(K = K,
+       "T" = n_t,
+       Y = as.matrix(Y),
+       prior_Rho_loc = prior_Rho_loc,
+       prior_Rho_scale = prior_Rho_scale,
+       prior_Beta_loc = prior_Beta_loc,
+       prior_Beta_scale = prior_Beta_scale
+       )
+# Choose model to fit
+model_name <- "VAR_lkj"
+# number of MCMC chains
+n_chains <- 4
+```
+
+```{r sampling, message=FALSE, eval=FALSE}
+# Compile model
+var_lkj_model <- cmdstanr::cmdstan_model(
+  stan_file = here("scripts", paste0(model_name, ".stan")),
+  pedantic = TRUE#,   
+  #quiet = FALSE
+  )
+# Run sampler
+var_lkj_fit <- var_lkj_model$sample(
+  data = stan_data,
+  seed = 2023,
+  chains = n_chains,
+  parallel_chains = n_chains,
+  iter_warmup = 500,
+  iter_sampling = 500,
+  refresh = 500,
+  thin = 1,
+  adapt_delta = .8,
+  init = .1
+)
+# time to fit
+var_lkj_fit$time()$total
+```
+
+```{r}
+# Compile model
+var_lkj_model <- rstan::stan_model(
+  file = here("scripts", paste0(model_name, ".stan")))
+# Run sampler
+var_lkj_fit <- rstan::sampling(
+  object = var_lkj_model,
+  data = stan_data,
+  seed = 2023,
+  chains = n_chains,
+  cores = n_chains,
+  iter = 1000,
+  warmup = 500,
+  refresh = 500,
+  thin = 1,
+  init = .1,
+  control = list(adapt_delta = .8)
+)
+```
+
+## Effective sample size (ESS) & Rhat Plots
+```{r}
+# color scheme
+color_scheme_set(scheme = "purple")
+# Effective sample sizes
+plot_neff <-
+  mcmc_neff_hist(bayesplot::neff_ratio(var_lkj_fit), binwidth = .01) +
+  labs(title = "A") +
+  guides(color = "none", fill = "none") +
+  theme(
+    legend.text = element_blank(),
+    legend.key = element_blank(),
+    title = element_text(size = 16, face = "bold")
+  )
+# Rhat
+# BS: Why does this have missings?
+plot_rhat <-
+  bayesplot::mcmc_rhat_hist(bayesplot::rhat(var_lkj_fit)) +
+  labs(title = "B") +
+  guides(color = "none", fill = "none") +
+  theme(
+    legend.text = element_blank(),
+    legend.key = element_blank(),
+    title = element_text(size = 16, face = "bold")
+  ) +
+  yaxis_text(on = TRUE)
+# Combined plot
+plot_diagnostics <- gridExtra::grid.arrange(plot_neff, plot_rhat, ncol = 2)
+```
+
+### LOO
+```{r}
+var_lkj_loo <- var_lkj_fit$loo()
+print(var_lkj_loo)
+plot(var_lkj_loo)
+```
+
+```{r}
+#param_ests <- var_lkj_fit$summary(c("B", "Rho","mu_B","sigma_B", "sigma_theta"))
+param_ests <- var_lkj_fit$summary()
+```
+
+# Parameter Recovery
+
+### Betas
+```{r}
+medians_beta <-
+  var_lkj_fit$summary("Beta") %>% 
+  dplyr::select(median) %>% 
+  unlist() %>% 
+  round(2) %>% 
+  matrix(., nrow = K, byrow = FALSE)
+cor.plot(medians_beta)
+
+cor.plot(gvar_mod$beta)
+```
+
+### Difference in Betas
+```{r}
+diff_Rho <- medians_beta - gvar_mod$beta
+cor.plot(diff_Rho)
+```
+
+```{r}
+draws_beta <- var_lkj_fit$draws("Beta") %>% as_draws_matrix()
+bayesplot::ppc_intervals(gvar_mod$beta %>% as.vector(),draws_beta)
+```
+
+### Partial Correlations
+```{r}
+medians_rho <-
+  var_lkj_fit$summary("Rho") %>% 
+  dplyr::select(median) %>% 
+  unlist() %>% 
+  round(2) %>% 
+  matrix(., nrow = K, byrow = FALSE)
+cor.plot(medians_rho)
+
+cor.plot(gvar_mod$PCC)
+
+```
+
+### Difference in partial correlations
+```{r}
+diff_Rho <- medians_rho - gvar_mod$PCC
+cor.plot(diff_Rho)
+```
+
+
+```{r}
+draws_rho <- var_lkj_fit$draws("Rho") %>% as_draws_matrix()
+bayesplot::ppc_intervals(gvar_mod$PCC %>% as.vector(),draws_rho)
+```
+
+***
+
+# Loglik extraction
+```{r}
+source(here("scripts","functions.R"))
+draws_sigma <- var_lkj_fit$draws("Sigma") %>% as_draws_matrix()
+
+log_lik_0 <-
+  log_lik_gVAR(Y = Y,
+               draws_beta = draws_beta,
+               draws_sigma = draws_sigma, 
+               n_cores = 4)
+
+chain_ids <- var_lkj_fit$draws("Beta") %>% 
+  as_draws_df() %>% 
+  dplyr::select(.chain) %>% unlist()
+
+loo_0 <- loo(log_lik_0, r_eff = relative_eff(log_lik_0, chain_ids)
+)
+
+```
+
+
+
+
+
+
+```{r stan data & compilation}
+beta_post_1 <- rstan::extract(net_1a_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+beta_post_2 <- rstan::extract(net_2_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+
+# prepare stan data
+diff_test_stan_data <-
+  list(P = ncol(beta_post_1),
+       N = nrow(beta_post_1),
+       Y_1 = beta_post_1,
+       Y_2 = beta_post_2
+       )
+# Choose model to fit
+model_name <- "chisqr_diff_test"
+# number of MCMC chains
+n_chains <- 4
+```
+
+This now "runs", but the chains don't really mix and everything is broken. 
+```{r}
+# Compile model
+diff_test_model <- rstan::stan_model(
+  file = here("scripts", paste0(model_name, ".stan")))
+# Run sampler
+diff_test_fit <- rstan::sampling(
+  object = diff_test_model,
+  data = diff_test_stan_data,
+  seed = 2023,
+  chains = n_chains,
+  cores = n_chains,
+  iter = 1000,
+  warmup = 500,
+  refresh = 500,
+  thin = 1,
+  init = .1,
+  control = list(adapt_delta = .8)
+)
+```
+
+
+
+
+
+
+
+
+
+
+Simulate data from same model, slightly different DGP, strongly different DGP
+```{r}
+source(here("scripts","functions.R"))
+
+l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+# data generating graphs
+gvar_mod1 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
+gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
+gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
+gvar_mod4 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
+# number of time points
+t <- 500
+# simulate data
+data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+data_1b <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+data_2 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod2$beta,
+                                        kappa = gvar_mod2$kappa)
+data_3 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod3$beta,
+                                        kappa = gvar_mod3$kappa)
+data_4 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod4$beta,
+                                        kappa = gvar_mod4$kappa)
+```
+
+### Fit networks 
+```{r message=FALSE}
+net_1a_fit <-
+  fit_gVAR_stan(
+    data = data_1a,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_1b_fit <-
+  fit_gVAR_stan(
+    data = data_1b,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_2_fit <-
+  fit_gVAR_stan(
+    data = data_2,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_3_fit <-
+  fit_gVAR_stan(
+    data = data_3,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_4_fit <-
+  fit_gVAR_stan(
+    data = data_4,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+```
+
+```{r}
+
+cores <- parallel::detectCores() - 4
+net_1_data_1_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_1a, n_cores = cores)
+net_1_data_2_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_1b, n_cores = cores)
+net_2_data_2_loo <- loo_gVAR(stan_fit = net_1b_fit, data = data_1b, n_cores = cores)
+net_2_data_1_loo <- loo_gVAR(stan_fit = net_1b_fit, data = data_1a, n_cores = cores)
+```
+
+```{r}
+plot(net_1_data_1_loo)
+plot(net_1_data_2_loo)
+plot(net_2_data_2_loo)
+plot(net_2_data_1_loo)
+```
+
+```{r}
+loo_compare(net_1_data_1_loo, net_1_data_2_loo)
+loo_compare(net_2_data_2_loo, net_2_data_1_loo)
+```
+
+
+```{r}
+net_1_data_1_logml <- bridgesampling::bridge_sampler(
+  samples = net_1a_fit,
+  stan_fit = net_1a_fit
+)$logml
+
+net_1_data_2_logml <- bridgesampling::bridge_sampler(
+  samples = net_1a_fit,
+  stan_fit = net_1a_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1b
+)$logml
+
+net_2_data_2_logml <- bridgesampling::bridge_sampler(
+  samples = net_1b_fit,
+  stan_fit = net_1b_fit
+)$logml
+
+net_2_data_1_logml <- bridgesampling::bridge_sampler(
+  samples = net_1b_fit,
+  stan_fit = net_1b_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1b
+)$logml
+```
+
+```{r}
+bridgesampling::bayes_factor(net_1_data_1_logml, net_1_data_2_logml)
+bridgesampling::bayes_factor(net_2_data_2_logml, net_2_data_1_logml)
+```
+
+
+```{r}
+(net_1_data_1_loo$elpd - net_1_data_1_logml) - (net_1_data_2_loo$elpd - net_1_data_2_logml) 
+```
+
+
+```{r}
+var_lkj_draws <- rstan::extract(var_lkj_fit)
+var_lkj_LML <- bridgesampling::bridge_sampler(
+  samples = var_lkj_fit,
+  stan_fit = var_lkj_fit,
+  method = "warp3"
+)
+bridgesampling::logml(var_lkj_LML)
+var_lkj_LML$logml
+```
+

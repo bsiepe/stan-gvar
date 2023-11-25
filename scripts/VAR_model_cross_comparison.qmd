@@ -1,0 +1,208 @@
+---
+title: "GVAR - Model Fitting and Results"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    collapsed: no
+    smooth_scroll: yes
+---
+
+```{r setup, include = FALSE}
+# Libraries
+packages <- c(
+  "tidyverse",
+  "devtools",
+  "readxl",
+  "lubridate",
+  "rmarkdown",
+  "psych",
+  "cmdstanr",
+  "rstan",
+  "loo",
+  "bayesplot",
+  "posterior",
+  "bayestestR",
+  "here",
+  "rtf",
+  "sjlabelled",
+  "tsnet",
+  "BGGM",
+  "graphicalVAR",
+  "mvtnorm"
+)
+#remotes::install_github("donaldRwilliams/BGGM")
+#devtools::install_github("bsiepe/tsnet")
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(packages, update = F, character.only = T)
+
+source(here("scripts","functions.R"))
+set.seed(35037)
+```
+
+### Simulate data from same model, slightly different DGP, strongly different DGP
+```{r}
+source(here("scripts","functions.R"))
+
+l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+# data generating graphs
+gvar_mod1 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
+gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
+gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
+gvar_mod4 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
+# number of time points
+t <- 500
+# simulate data
+data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+data_1b <- graphicalVAR::graphicalVARsim(nTime = t,
+                                         beta = gvar_mod1$beta,
+                                         kappa = gvar_mod1$kappa)
+data_2 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod2$beta,
+                                        kappa = gvar_mod2$kappa)
+data_3 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod3$beta,
+                                        kappa = gvar_mod3$kappa)
+data_4 <- graphicalVAR::graphicalVARsim(nTime = t,
+                                        beta = gvar_mod4$beta,
+                                        kappa = gvar_mod4$kappa)
+```
+
+### Fit networks 
+```{r message=FALSE}
+net_1a_fit <-
+  fit_gVAR_stan(
+    data = data_1a,
+    iter_sampling = 500,
+    method = "sampling",
+  )
+net_1b_fit <-
+  fit_gVAR_stan(
+    data = data_1b,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_2_fit <-
+  fit_gVAR_stan(
+    data = data_2,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_3_fit <-
+  fit_gVAR_stan(
+    data = data_3,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+net_4_fit <-
+  fit_gVAR_stan(
+    data = data_4,
+    iter_sampling = 500,
+    method = "sampling"
+  )
+```
+
+### Compute LOOs: self-model and cross-model
+```{r}
+cores <- parallel::detectCores() - 4
+net_1a_data_1a_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_1a, n_cores = cores)
+net_1a_data_1b_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_1b, n_cores = cores)
+net_1a_data_2_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_2, n_cores = cores)
+net_1a_data_3_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_3, n_cores = cores)
+net_1a_data_4_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_4, n_cores = cores)
+```
+
+```{r}
+plot(net_1a_data_1a_loo)
+plot(net_1a_data_1b_loo)
+plot(net_1a_data_2_loo)
+plot(net_1a_data_3_loo)
+plot(net_1a_data_4_loo)
+```
+
+### LOO model comparison for cross-fit
+```{r}
+loo_compare(net_1a_data_1a_loo, net_1a_data_1b_loo)
+loo_compare(net_1a_data_1a_loo, net_1a_data_2_loo)
+loo_compare(net_1a_data_1a_loo, net_1a_data_3_loo)
+loo_compare(net_1a_data_1a_loo, net_1a_data_4_loo)
+```
+
+### Compute marginal logliks
+```{r}
+net_1a_data_1a_logml <- bridgesampling::bridge_sampler(
+  samples = net_1a_fit,
+  stan_fit = net_1a_fit,
+  method = "warp3"
+)$logml
+
+net_1a_data_1b_logml <- bridgesampling::bridge_sampler(
+  samples = net_1a_fit,
+  stan_fit = net_1a_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1b,
+  method = "warp3"
+)$logml
+
+net_1a_data_2_logml <- bridgesampling::bridge_sampler(
+  samples = net_1a_fit,
+  stan_fit = net_1a_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_2,
+  method = "warp3"
+)$logml
+
+net_1a_data_3_logml <- bridgesampling::bridge_sampler(
+  samples = net_1b_fit,
+  stan_fit = net_1b_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_3,
+  method = "warp3"
+)$logml
+
+net_1a_data_4_logml <- bridgesampling::bridge_sampler(
+  samples = net_1b_fit,
+  stan_fit = net_1b_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_4,
+  method = "warp3"
+)$logml
+```
+
+### Compute BFs based on marginal log-likelihoods
+```{r}
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_1b_logml)
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_2_logml)
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_3_logml)
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_4_logml)
+```
+
+### Experimental BFs
+```{r}
+(net_1a_data_1a_loo$elpd / net_1a_data_1a_logml) /
+  (net_1a_data_1b_loo$elpd / net_1a_data_1b_logml)
+
+(net_1a_data_1a_loo$elpd / net_1a_data_1a_logml) /
+  (net_1a_data_2_loo$elpd / net_1a_data_2_logml)
+
+(net_1a_data_1a_loo$elpd / net_1a_data_1a_logml) /
+  (net_1a_data_3_loo$elpd / net_1a_data_3_logml)
+
+(net_1a_data_1a_loo$elpd / net_1a_data_1a_logml) /
+  (net_1a_data_4_loo$elpd / net_1a_data_4_logml)
+```
+
+
+```{r}
+var_lkj_draws <- rstan::extract(var_lkj_fit)
+var_lkj_LML <- bridgesampling::bridge_sampler(
+  samples = var_lkj_fit,
+  stan_fit = var_lkj_fit,
+  method = "warp3"
+)
+bridgesampling::logml(var_lkj_LML)
+var_lkj_LML$logml
+```
+

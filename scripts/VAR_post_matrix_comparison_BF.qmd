@@ -39,6 +39,8 @@ set.seed(35037)
 
 # Posterior comparisons
 
+### Simulate gVAR-Data
+
 Simulate data from same model, slightly different DGP, strongly different DGP
 ```{r}
 l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
@@ -48,7 +50,7 @@ gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
 gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
 gvar_mod4 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
 # number of time points
-t <- 500
+t <- 100
 # simulate data
 data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
                                          beta = gvar_mod1$beta,
@@ -123,9 +125,12 @@ compare_mat <-
            mat2,
            bootstrap_samples = 0,
            H1_prior_scale = 0.5, # normal SD
-           H0_prior_scale = 0.025, # "normal" = SD, "uniform" = range / 2
-           H0_distribution = "posterior_uncertainty", # c("normal", "uniform", "posterior_uncertainty")
-           plot = TRUE) {
+           H0_prior_scale = 0.1, # "normal" = SD, "uniform" = range / 2
+           H0_distribution = "uniform", # c("normal", "uniform", "posterior_uncertainty")
+           plot = TRUE,
+           plot_xlim = NULL,
+           plot_ylim = NA
+           ) {
     #### with bootstrapping ###
     if (bootstrap_samples > 0) {
       # sample rows from posterior iterations
@@ -260,21 +265,29 @@ compare_mat <-
     overlap_null_post <-
       diff_post[diff_post < max(diff_null)] %>%
       length() / length(diff_post)
-    cat(paste0("\n Posterior samples below Null ROPE range upper bound: ",
-               round(as.double(overlap_null_post) * 100, 4), "%. \n"))
+    cat(paste0(
+      "\n Posterior samples below Null ROPE range upper bound: ",
+      round(as.double(overlap_null_post) * 100, 4),
+      "%. \n"
+    ))
     
     overlap_null_prior <-
       diff_post[diff_prior < max(diff_null)] %>%
       length() / length(diff_prior)
-    cat(paste0("\n Prior samples below Null ROPE range upper bound: ",
-               round(as.double(overlap_null_prior) * 100, 4), "%. \n"))
+    cat(paste0(
+      "\n Prior samples below Null ROPE range upper bound: ",
+      round(as.double(overlap_null_prior) * 100, 4),
+      "%. \n"
+    ))
     
     # plot prior vs. posterior
     if (isTRUE(plot)) {
       # combine diff_post and diff_prior in a single column of a dataframe
       # with another column as an indicator if it is a posterior or prior
       # distribution
-      x_UL <- median(diff_prior)
+      if (is.null(plot_xlim)) {
+        plot_xlim <- median(diff_prior)
+      }
       df_samples <- data.frame(posterior = diff_post,
                                prior = diff_prior) %>%
         tidyr::pivot_longer(
@@ -289,8 +302,10 @@ compare_mat <-
         ggplot2::ggplot() +
         ggplot2::geom_density(aes(value, fill = distribution),
                               alpha = .5) +
-        ggplot2::scale_x_continuous(limits = c(0, x_UL), expand = expansion()) +
-        ggplot2::scale_y_continuous(limits = c(0, NA), expand = expansion()) +
+        ggplot2::scale_x_continuous(limits = c(0, plot_xlim),
+                                    expand = expansion()) +
+        ggplot2::scale_y_continuous(limits = c(0, plot_ylim),
+                                    expand = expansion()) +
         labs(x = "Difference", y = "Density") +
         theme_light() +
         theme(panel.grid = element_blank())
@@ -370,7 +385,9 @@ compare_mat(
   H0_prior_scale = .025, 
   H0_distribution = "normal",
   bootstrap_samples = 4e4,
-  plot = TRUE
+  plot = TRUE,
+  plot_xlim = 20, 
+  plot_ylim = 4
 )
 compare_mat(
   mat1 = beta_post_1a,
@@ -378,14 +395,18 @@ compare_mat(
   H0_prior_scale = .1, 
   H0_distribution = "uniform",
   bootstrap_samples = 4e4,
-  plot = TRUE
+  plot = TRUE,
+  plot_xlim = 20, 
+  plot_ylim = 4
 )
 compare_mat(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b, 
   H0_distribution = "posterior_uncertainty",
   bootstrap_samples = 4e4,
-  plot = TRUE
+  plot = TRUE,
+  plot_xlim = 20, 
+  plot_ylim = 4
 )
 ```
 
