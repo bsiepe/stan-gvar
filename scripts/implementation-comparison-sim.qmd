@@ -1,0 +1,216 @@
+---
+title: "implementation-comparison-sim"
+format: html
+editor: visual
+---
+
+Here, we investigate the different implementations of the Bayesian gVAR. 
+
+# Preparation
+```{r}
+library(BGGM)
+library(tidyverse)
+library(here)
+source(here("scripts/functions.R"))
+```
+
+
+
+# Writing simulation functions
+
+## Creating Design
+
+```{r}
+## Variable Objects
+# Number of timepoints
+tp <- c(50, 200, 500)
+
+# Amount of change between DGP
+dgp <- c("graph3", "graph4", "graph5")
+
+
+df_design <- createDesign(tp = tp,
+                       dgp = dgp)
+
+## Fixed Objects
+# These are used in SimDesign to specify objects passed to later functions
+# that do not vary across conditions
+
+# DGPs
+l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+
+graph3 <- l_changed_graphs_0305[["graph3"]][["truegraph"]]
+graph4 <- l_changed_graphs_0305[["graph4"]][["truegraph"]]
+graph5 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
+dgp_list <- list("graph3" = graph3,
+                 "graph4" = graph4,
+                 "graph5" = graph5)
+
+# Further simulation parameters
+sim_pars <- list(means = 0,
+                 dgp_list = dgp_list,
+                 nvar = 6,
+                 rho_prior = 0.25,
+                 beta_prior = 0.5,
+                 bggm_iter = 50000,
+                 stan_iter = 1000,
+                 mplus_iter = 2000,
+                 dist_draws = 10000)   # number of distances computed between matrices
+
+```
+
+
+
+## Data Generating Function
+```{r}
+sim_generate <- function(condition, fixed_objects = NULL) {
+  
+  # obtain fixed parameters
+  # this is NOT like the typical attach
+  SimDesign::Attach(fixed_objects)
+  
+  # obtain condition parameters
+  tp <- condition$tp
+  dgp_ind <- condition$dgp
+  dgp <- fixed_objects$dgp_list[[dgp_ind]]
+  
+  
+  # Simulate dataset under true
+  data <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = tp,
+                                              beta = dgp$beta,
+                                              kappa = dgp$kappa,
+                                              mean = means))
+  
+  # Standardize data
+  data <- as.data.frame(scale(data))
+  
+  
+  return(data)
+  
+  
+}
+```
+
+
+
+## Analysis Function
+
+```{r}
+sim_analyse <- function(condition, dat, fixed_objects = NULL) {
+  
+  SimDesign::Attach(fixed_objects)    
+  
+  #--- Fit BGGM model
+  fit_bggm <- BGGM::var_estimate(dat,
+                                 rho_sd = rho_prior,
+                                 beta_sd = beta_prior,
+                                 iter = bggm_iter, 
+                                 progress = FALSE)
+  
+
+  
+  #--- Fit Stan LKJ
+  # maybe use this?
+  fit_stan_lkj <-  fit_gVAR_stan(
+    data = dat,
+    cov_prior = "LKJ",
+    priors = NULL,
+    iter_sampling = stan_iter,
+    method = "sampling"
+  )
+  
+  
+  #--- Fit Stan Inverse Wishart
+  fit_stan_iw <-  fit_gVAR_stan(
+    data = dat,
+    cov_prior = "IW",
+    priors = NULL,
+    iter_sampling = stan_iter,
+    method = "sampling"
+  )
+  
+  #--- Fit Mplus defaults
+  # Not for now, 
+  # is a bit tricky
+  # http://philchalmers.github.io/SimDesign/html/14-Calling_external_programs.html
+  
+  
+  
+  
+  
+  
+  #--- Return
+  ret_analyse <- list(fit_bggm = fit_bggm,
+                      fit_stan_lkj = fit_stan_lkj,
+                      fit_stan_iw = fit_stan_iw)
+  return(ret_analyse)
+  
+}
+```
+
+
+
+## Summary Function
+
+```{r}
+sim_summarise <- function(condition, results, fixed_objects = NULL) {
+  
+  SimDesign::Attach(fixed_objects)  
+  
+  #--- Obtain condition parameters and DGP
+  dgp_ind <- condition$dgp
+  dgp <- dgp_list[[dgp_ind]]
+  
+  
+  #--- Compare against DGP
+  
+  #-- BGGM
+  
+  
+  
+  #-- Stan LKJ
+  # Convert to array
+  stan_arr_lkj <- stan_fit_convert(results$stan_fit_lkj)
+  
+  # Compare to dgp
+  comp_lkj<- array_compare_dgp(stan_arr_lkj,
+                               dgp = dgp,
+                               plot = FALSE)
+  
+  #-- Stan IW
+  # Convert to array
+  stan_arr_iw <- stan_fit_convert(results$stan_fit_iw)
+  comp_iw <- array_compare_dgp(stan_arr_iw,
+                               dgp = dgp,
+                               plot = FALSE)
+  
+  
+  #--- Compare with one another
+  
+  
+  
+  
+  
+  
+  # Return all results
+  ret_summarise <- c(comp_iw = comp_iw,
+                     comp_lkj = comp_lkj)
+  return(ret_summarise)
+}
+
+
+
+```
+
+
+# Execute Simulation
+
+```{r}
+sim_results <- SimDesign::runSimulation(design = df_design, 
+                                    replications = 2, 
+                                    generate = sim_generate, 
+                                    analyse = sim_analyse, 
+                                    summarise = sim_summarise, 
+                                    fixed_objects = sim_pars)
+
+```
