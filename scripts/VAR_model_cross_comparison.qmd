@@ -193,16 +193,3 @@ bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_4_logml)
 (net_1a_data_1a_loo$elpd / net_1a_data_1a_logml) /
   (net_1a_data_4_loo$elpd / net_1a_data_4_logml)
 ```
-
-
-```{r}
-var_lkj_draws <- rstan::extract(var_lkj_fit)
-var_lkj_LML <- bridgesampling::bridge_sampler(
-  samples = var_lkj_fit,
-  stan_fit = var_lkj_fit,
-  method = "warp3"
-)
-bridgesampling::logml(var_lkj_LML)
-var_lkj_LML$logml
-```
-
