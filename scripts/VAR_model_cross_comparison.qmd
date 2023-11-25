@@ -130,12 +130,16 @@ loo_compare(net_1a_data_1a_loo, net_1a_data_3_loo)
 loo_compare(net_1a_data_1a_loo, net_1a_data_4_loo)
 ```
 
+
+## Model Comparison via marginal log-likelihoods
 ### Compute marginal logliks
 ```{r}
+method <- "normal" # c("normal", "warp3")
+# foward
 net_1a_data_1a_logml <- bridgesampling::bridge_sampler(
   samples = net_1a_fit,
   stan_fit = net_1a_fit,
-  method = "warp3"
+  method = method
 )$logml
 
 net_1a_data_1b_logml <- bridgesampling::bridge_sampler(
@@ -143,7 +147,7 @@ net_1a_data_1b_logml <- bridgesampling::bridge_sampler(
   stan_fit = net_1a_fit,
   log_posterior = log_lik_gVAR,
   data = data_1b,
-  method = "warp3"
+  method = method
 )$logml
 
 net_1a_data_2_logml <- bridgesampling::bridge_sampler(
@@ -151,7 +155,7 @@ net_1a_data_2_logml <- bridgesampling::bridge_sampler(
   stan_fit = net_1a_fit,
   log_posterior = log_lik_gVAR,
   data = data_2,
-  method = "warp3"
+  method = method
 )$logml
 
 net_1a_data_3_logml <- bridgesampling::bridge_sampler(
@@ -159,7 +163,7 @@ net_1a_data_3_logml <- bridgesampling::bridge_sampler(
   stan_fit = net_1b_fit,
   log_posterior = log_lik_gVAR,
   data = data_3,
-  method = "warp3"
+  method = method
 )$logml
 
 net_1a_data_4_logml <- bridgesampling::bridge_sampler(
@@ -167,17 +171,65 @@ net_1a_data_4_logml <- bridgesampling::bridge_sampler(
   stan_fit = net_1b_fit,
   log_posterior = log_lik_gVAR,
   data = data_4,
-  method = "warp3"
+  method = method
+)$logml
+
+# Backwards
+net_1b_data_1a_logml <- bridgesampling::bridge_sampler(
+  samples = net_1b_fit,
+  stan_fit = net_1b_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1a,
+  method = method
+)$logml
+
+net_2_data_1a_logml <- bridgesampling::bridge_sampler(
+  samples = net_2_fit,
+  stan_fit = net_2_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1a,
+  method = method
+)$logml
+
+net_3_data_1a_logml <- bridgesampling::bridge_sampler(
+  samples = net_3_fit,
+  stan_fit = net_3_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1a,
+  method = method
+)$logml
+
+net_4_data_1a_logml <- bridgesampling::bridge_sampler(
+  samples = net_4_fit,
+  stan_fit = net_4_fit,
+  log_posterior = log_lik_gVAR,
+  data = data_1a,
+  method = method
 )$logml
 ```
 
 ### Compute BFs based on marginal log-likelihoods
 ```{r}
+# forward
 bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_1b_logml)
 bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_2_logml)
 bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_3_logml)
 bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_4_logml)
+# backwards
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1b_data_1a_logml)
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_2_data_1a_logml)
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_3_data_1a_logml)
+bridgesampling::bayes_factor(net_1a_data_1a_logml, net_4_data_1a_logml)
+
 ```
+
+
+
+
+
+
+
+
 
 ### Experimental BFs
 ```{r}
