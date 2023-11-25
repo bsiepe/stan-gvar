@@ -78,6 +78,7 @@ fit_gVAR_stan <-
            priors = NULL,
            backend = "rstan",
            method = "sampling",
+           cov_prior = "LKJ", # c("LKJ", "IW")
            iter_sampling = 500,
            iter_warmup = 500,
            n_chains = 4,
@@ -113,7 +114,13 @@ fit_gVAR_stan <-
     )
     
     # Choose model to fit
-    model_name <- "VAR_lkj"
+    if (cov_prior == "LKJ") {
+      model_name <- "VAR_lkj"
+    }
+    if (cov_prior == "IW") {
+      model_name <- "VAR_wishart"
+    }
+    
     
     if (backend == "rstan") {
       # Compile model

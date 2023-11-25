@@ -121,8 +121,9 @@ compare_mat <-
   function(mat1,
            mat2,
            bootstrap_samples = 0,
-           H1_prior_sd = 0.5,
-           null_prior_sd = 0.025,
+           H1_prior_scale = 0.5,
+           null_prior_scale = 0.1,
+           null_distribution = "uniform",
            plot = TRUE) {
     #### with bootstrapping ###
     if (bootstrap_samples > 0) {
@@ -148,7 +149,7 @@ compare_mat <-
         purrr::map(
           .x = rows2,
           .f = function(.x) {
-            mat2[.x, ]
+            mat2[.x,]
           }
         ) %>%
         do.call(rbind, .)
@@ -159,8 +160,18 @@ compare_mat <-
       
       # compute prior difference matrices
       diff_prior <-
-        abs(rnorm(n = bootstrap_samples * ncol(mat1), mean = 0, sd = H1_prior_sd) -
-              rnorm(n = bootstrap_samples * ncol(mat1), mean = 0, sd = H1_prior_sd)) %>%
+        abs(
+          rnorm(
+            n = bootstrap_samples * ncol(mat1),
+            mean = 0,
+            sd = H1_prior_scale
+          ) -
+            rnorm(
+              n = bootstrap_samples * ncol(mat1),
+              mean = 0,
+              sd = H1_prior_scale
+            )
+        ) %>%
         matrix(., ncol = ncol(mat1)) %>%
         apply(., 1, sum)
       
@@ -175,31 +186,49 @@ compare_mat <-
         apply(., 1, sum)
       
       # prior difference matrices
-      diff_prior <- abs(rnorm(
-        n = 1e4 * ncol(mat1),
-        mean = 0,
-        sd = H1_prior_sd
-      ) -
+      diff_prior <- abs(
         rnorm(
           n = 1e4 * ncol(mat1),
           mean = 0,
-          sd = H1_prior_sd
-        )) %>%
+          sd = H1_prior_scale
+        ) -
+          rnorm(
+            n = 1e4 * ncol(mat1),
+            mean = 0,
+            sd = H1_prior_sd
+          )
+      ) %>%
         matrix(., ncol = ncol(mat1)) %>%
         apply(., 1, sum)
     }
     
     # distribution for null rope range
-    diff_null <- abs(rnorm(
+          if(null_distribution == "uniform"){
+                diff_null <- abs(runif(
+      n = 1e4 * ncol(mat1),
+        min = -null_prior_scale,
+        max = +null_prior_scale
+    ) -
+      runif(
+        n = 1e4 * ncol(mat1),
+        min = -null_prior_scale,
+        max = +null_prior_scale
+      ))
+        
+      }
+      if(null_distribution == "normal"){
+            diff_null <- abs(rnorm(
       n = 1e4 * ncol(mat1),
       mean = 0,
-      sd = null_prior_sd
+      sd = null_prior_scale
     ) -
       rnorm(
         n = 1e4 * ncol(mat1),
         mean = 0,
-        sd = 0.02
-      )) %>%
+        sd = null_prior_scale
+      ))
+      }
+    diff_null %>%
       matrix(., ncol = ncol(mat1)) %>%
       apply(., 1, sum)
     # HDI for Null distribution, CI_high will be used as upper ROPE limit
@@ -214,7 +243,7 @@ compare_mat <-
     overlap_null_prior <-
       diff_post[diff_prior < max(diff_null)] %>%
       length() / length(diff_prior)
-    cat(paste0("\n Overlap of Null and Posterior: ",
+    cat(paste0("\n Overlap of Null and Prior: ",
                round(as.double(overlap_null_prior) * 100, 4), "%. \n"))
     
     # plot prior vs. posterior
@@ -245,20 +274,21 @@ compare_mat <-
       
       print(plot)
     }
-    # if there is no overlap of posterior and null ommit BF
-    
-      if (overlap_null_post == 0 ){
+    # if there is no overlap of posterior and null omit BF
+    if (overlap_null_post == 0) {
       cat(
         "\n There is no overlap of the posterior for H1 and and the ROPE range for H0. \n The bayesfactor for such a case would be highly unstable and is therefore not computed!"
       )
       return(Inf)
-        } else if (overlap_null_post > 0 & overlap_null_prior == 0) {
+    # if there is an overlap for posterior and null but not for prior and null omit BF  
+    } else if (overlap_null_post > 0 &
+               overlap_null_prior == 0) {
       if (overlap_null_prior == 0)
-       cat(
-        "\n There is no overlap of the posterior for H1 and and the ROPE range for H0. \n The bayesfactor for such a case would be highly unstable and is therefore not computed!"
-      )
-      return(Inf)
-          
+        cat(
+          "\n There is no overlap of the posterior for H1 and and the ROPE range for H0. \n The bayesfactor for such a case would be highly unstable and is therefore not computed!"
+        )
+      return(-Inf)
+      
     } else{
       # oherwise compute bayesfactor
       bf <-
