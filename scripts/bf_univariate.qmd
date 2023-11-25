@@ -264,7 +264,6 @@ mats <- BGGM:::create_matrices(framed = framed,
 
 Now compute Bayes Factors:
 ```{r}
-
 # loop through upper triangular
 for(i in seq_len(nrow(indices))){
 

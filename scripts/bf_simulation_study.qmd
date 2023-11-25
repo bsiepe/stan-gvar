@@ -1,0 +1,203 @@
+---
+title: "bf-simulation-study"
+format: html
+editor: visual
+---
+
+# Preparation
+
+```{r}
+library(SimDesign)
+library(tidyverse)
+library(BGGM)
+library(here)
+
+```
+
+# Writing Simulation Functions
+
+## Creating Design
+
+```{r}
+## Variable Objects
+# Number of timepoints
+tp <- c(50, 200, 500)
+
+# Amount of change between DGP
+change <- c("true", "const05", "const15")
+
+
+df_design <- createDesign(tp = tp,
+                       change = change)
+
+## Fixed Objects
+# These are used in SimDesign to specify objects passed to later functions
+# that do not vary across conditions
+
+# DGPs
+l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+
+gvar_mod_00 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
+gvar_mod_05 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
+gvar_mod_15 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
+dgp_list <- list("true" = gvar_mod_00,
+                 "const05" = gvar_mod_05,
+                 "const15" = gvar_mod_15)
+
+# Further simulation parameters
+sim_pars <- list(means = 0,
+                 nvar = 6,
+                 rho_prior = 0.25,
+                 beta_prior = 0.5,
+                 bggm_iter = 50000,
+                 dist_draws = 10000)   # number of distances computed between matrices
+
+```
+
+## Data Generation Function
+We always simulate from the "true" graph, and then simulate either from another "true" graph (i.e., same DGP), or from two alternative modificaitons.
+```{r}
+sim_generate <- function(condition, fixed_objects = NULL) {
+  
+  # obtain fixed parameters
+  # this is NOT like the typical attach
+  SimDesign::Attach(fixed_objects)
+  
+  # obtain condition parameters
+  tp <- condition$tp
+  change <- condition$change
+  
+  
+  # Simulate dataset under true
+  data_true <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = tp,
+                                              beta = dgp_list[["true"]]$beta,
+                                              kappa = dgp_list[["true"]]$kappa,
+                                              mean = means))
+  
+  # Standardize data
+  data_true <- as.data.frame(scale(data_true))
+  
+  # Simulate dataset under change
+  data_change <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = tp,
+                                              beta = dgp_list[[change]]$beta,
+                                              kappa = dgp_list[[change]]$kappa,
+                                              mean = means))
+  
+  # Standardize data
+  data_change <- as.data.frame(scale(data_change))
+  
+  l_data <- list(data_true = data_true,
+                 data_change = data_change)
+  
+  return(l_data)
+  
+  
+}
+
+```
+
+## Analysis Function
+For now, only fit with BGGM, and then compute Bayes Factor.
+```{r}
+sim_analyse <- function(condition, dat, fixed_objects = NULL) {
+  
+  SimDesign::Attach(fixed_objects)    
+  
+  #--- Fit BGGM model
+  # On true data
+  fit_bggm_true <- BGGM::var_estimate(dat$data_true,
+                                 rho_sd = rho_prior,
+                                 beta_sd = beta_prior,
+                                 iter = bggm_iter, 
+                                 progress = FALSE)
+  
+  # On change data
+  fit_bggm_change <- BGGM::var_estimate(dat$data_change,
+                                 rho_sd = rho_prior,
+                                 beta_sd = beta_prior,
+                                 iter = bggm_iter, 
+                                 progress = FALSE)
+  
+  #--- Calculate differences
+  # Obtain indicators for comparison
+  comp_ind <- replicate(dist_draws, sample(1:bggm_iter, 2, replace = TRUE))
+
+  # Obtain difference matrix for beta
+  diff_beta <- array(NA, dim = c(nvar, nvar, dist_draws))
+  
+  for (i in 1:dist_draws) {
+    diff_beta[,,i] <- fit_bggm_true$fit$beta[,,comp_ind[1,i]] - fit_bggm_change$fit$beta[,,comp_ind[2,i]]
+  }
+  
+  # Obtain difference for pcor
+  diff_pcor <- array(NA, dim = c(nvar, nvar, dist_draws))
+  
+  for (i in 1:dist_draws) {
+    diff_pcor[,,i] <- fit_bggm_true$fit$pcors[,,comp_ind[1,i]] - fit_bggm_change$fit$pcors[,,comp_ind[2,i]]
+  }
+  
+  
+  #--- Obtain Bayes Factor
+  # Just for testing for now
+  bf <- 1
+  
+  #--- Return
+  ret_analyse <- list(bf = bf,
+              diff_beta = diff_beta,
+              diff_pcor = diff_pcor)
+  return(ret_analyse)
+  
+}
+```
+
+## Summarize Function
+
+```{r}
+sim_summarise <- function(condition, results, fixed_objects = NULL) {
+  
+  SimDesign::Attach(fixed_objects)  
+  
+  # Note: This is a useless comparison, just goes to show that the function works
+  # Compute mean and SD across difference matrices
+  l_diff_beta_mean <- lapply(seq_along(results), function(i){
+    apply(results[[i]]$diff_beta, c(1,2), mean)
+  })
+  l_diff_beta_sd <- lapply(seq_along(results), function(i){
+    apply(results[[i]]$diff_beta, c(1,2), sd)
+  })
+  l_diff_pcor_mean <- lapply(seq_along(results), function(i){
+    apply(results[[i]]$diff_pcor, c(1,2), mean)
+  })
+  l_diff_pcor_sd <- lapply(seq_along(results), function(i){
+    apply(results[[i]]$diff_pcor, c(1,2), sd)
+  })
+  
+  # Compute mean
+  diff_beta_mean <- mean(unlist(l_diff_beta_mean))
+  diff_pcor_mean <- mean(unlist(l_diff_pcor_mean))
+  
+  
+  # Compute mean of Bayes Factor
+  # bf_mean <- mean(results$bf, na.rm = TRUE)
+  # bf_sd <- sd(results$bf)
+  
+  # Return all results
+  ret_summarise <- c(diff_beta_mean = diff_beta_mean,
+              diff_pcor_mean = diff_pcor_mean)
+  return(ret_summarise)
+}
+```
+
+# Run Simulation
+
+```{r}
+res <- runSimulation(design = df_design, 
+                     replications = 2, 
+                     generate = sim_generate, 
+                     analyse = sim_analyse, 
+                     summarise = sim_summarise, 
+                     fixed_objects = sim_pars)
+res
+```
+
+# Analyze Simulation
