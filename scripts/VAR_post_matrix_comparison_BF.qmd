@@ -116,14 +116,15 @@ beta_post_4 <-
 ```
 
 ### Function for comparison
+
 ```{r}
 compare_mat <-
   function(mat1,
            mat2,
            bootstrap_samples = 0,
-           H1_prior_scale = 0.5,
-           null_prior_scale = 0.1,
-           null_distribution = "uniform",
+           H1_prior_scale = 0.5, # normal SD
+           H0_prior_scale = 0.025, # "normal" = SD, "uniform" = range / 2
+           H0_distribution = "posterior_uncertainty", # c("normal", "uniform", "posterior_uncertainty")
            plot = TRUE) {
     #### with bootstrapping ###
     if (bootstrap_samples > 0) {
@@ -154,8 +155,7 @@ compare_mat <-
         ) %>%
         do.call(rbind, .)
       # compute differences between matrices
-      diff_post <- (mat1 - mat2) %>%
-        abs() %>%
+      diff_post <- abs(mat1 - mat2) %>%
         apply(., 1, sum)
       
       # compute prior difference matrices
@@ -181,21 +181,20 @@ compare_mat <-
       diff_post <- mat1 - mat2
       attr(diff_post, which = "class") <- "matrix"
       
-      diff_post <- diff_post %>%
-        abs() %>%
+      diff_post <- abs(diff_post) %>%
         apply(., 1, sum)
       
       # prior difference matrices
       diff_prior <- abs(
         rnorm(
-          n = 1e4 * ncol(mat1),
+          n = 4e4 * ncol(mat1),
           mean = 0,
           sd = H1_prior_scale
         ) -
           rnorm(
-            n = 1e4 * ncol(mat1),
+            n = 4e4 * ncol(mat1),
             mean = 0,
-            sd = H1_prior_sd
+            sd = H1_prior_scale
           )
       ) %>%
         matrix(., ncol = ncol(mat1)) %>%
@@ -203,47 +202,71 @@ compare_mat <-
     }
     
     # distribution for null rope range
-          if(null_distribution == "uniform"){
-                diff_null <- abs(runif(
-      n = 1e4 * ncol(mat1),
-        min = -null_prior_scale,
-        max = +null_prior_scale
-    ) -
-      runif(
-        n = 1e4 * ncol(mat1),
-        min = -null_prior_scale,
-        max = +null_prior_scale
-      ))
-        
-      }
-      if(null_distribution == "normal"){
-            diff_null <- abs(rnorm(
-      n = 1e4 * ncol(mat1),
-      mean = 0,
-      sd = null_prior_scale
-    ) -
-      rnorm(
-        n = 1e4 * ncol(mat1),
-        mean = 0,
-        sd = null_prior_scale
-      ))
-      }
-    diff_null %>%
-      matrix(., ncol = ncol(mat1)) %>%
-      apply(., 1, sum)
+    if (H0_distribution == "normal") {
+      diff_null <- abs(
+        rnorm(
+          n = 4e4 * ncol(mat1),
+          mean = 0,
+          sd = H0_prior_scale
+        ) -
+          rnorm(
+            n = 4e4 * ncol(mat1),
+            mean = 0,
+            sd = H0_prior_scale
+          )
+      ) %>%
+        matrix(., ncol = ncol(mat1)) %>%
+        apply(., 1, sum)
+    }
+    if (H0_distribution == "uniform") {
+      diff_null <- abs(
+        runif(
+          n = 4e4 * ncol(mat1),
+          min = -H0_prior_scale,
+          max = H0_prior_scale
+        ) -
+          runif(
+            n = 4e4 * ncol(mat1),
+            min = -H0_prior_scale,
+            max = H0_prior_scale
+          )
+      ) %>%
+        matrix(., ncol = ncol(mat1)) %>%
+        apply(., 1, sum)
+    }
+    if (H0_distribution == "posterior_uncertainty") {
+      # sample rows from posterior iterations
+      rows1_null <-
+        sample(1:nrow(mat1),
+               size = nrow(mat1),
+               replace = FALSE)
+      
+      # assemble new posterior draws_matrices
+      mat1_null <-
+        purrr::map(
+          .x = rows1_null,
+          .f = function(.x) {
+            mat1[.x,]
+          }
+        ) %>%
+        do.call(rbind, .)
+      # compute differences between matrices
+      diff_null <- abs(mat1 - mat1_null) %>%
+        apply(., 1, sum)
+    }
     # HDI for Null distribution, CI_high will be used as upper ROPE limit
     null_ci <- bayestestR::hdi(diff_null, ci = 1)
     
     overlap_null_post <-
       diff_post[diff_post < max(diff_null)] %>%
       length() / length(diff_post)
-    cat(paste0("\n Overlap of Null and Posterior: ",
+    cat(paste0("\n Posterior samples below Null ROPE range upper bound: ",
                round(as.double(overlap_null_post) * 100, 4), "%. \n"))
     
     overlap_null_prior <-
       diff_post[diff_prior < max(diff_null)] %>%
       length() / length(diff_prior)
-    cat(paste0("\n Overlap of Null and Prior: ",
+    cat(paste0("\n Prior samples below Null ROPE range upper bound: ",
                round(as.double(overlap_null_prior) * 100, 4), "%. \n"))
     
     # plot prior vs. posterior
@@ -285,21 +308,27 @@ compare_mat <-
                overlap_null_prior == 0) {
       if (overlap_null_prior == 0)
         cat(
-          "\n There is no overlap of the posterior for H1 and and the ROPE range for H0. \n The bayesfactor for such a case would be highly unstable and is therefore not computed!"
+          "\n There is no overlap of the posterior for H1 and and the ROPE range for H0. \n The bayesfactor for such a case would be highly unstable and is therefore not computed! \n"
         )
-      return(-Inf)
+      dens_overlap_coef <- bayestestR::overlap(diff_post, diff_null)
+      
+      return(dens_overlap_coef)
       
     } else{
       # oherwise compute bayesfactor
-      bf <-
-        bayestestR::bf_parameters(
-          posterior = diff_post,
-          prior = diff_prior,
-          null = c(null_ci$CI_low, null_ci$CI_high),
-          direction = 0
-        )
-      print(bf)
-      return(bf$log_BF)
+      # bf <-
+      #   bayestestR::bf_parameters(
+      #     posterior = diff_post,
+      #     prior = diff_prior,
+      #     null = c(null_ci$CI_low, null_ci$CI_high),
+      #     direction = 0
+      #   )
+      # print(bf)
+      # return(bf$log_BF)
+      
+      dens_overlap_coef <- bayestestR::overlap(diff_post, diff_null)
+      
+      return(dens_overlap_coef)
     }
     # clean up
     rm(mat1, mat2, diff_post, diff_prior, diff_null)
@@ -311,19 +340,7 @@ compare_mat <-
 compare_mat(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
-  bootstrap_samples = 0,
-  plot = TRUE
-)
-compare_mat(
-  mat1 = beta_post_1a,
-  mat2 = beta_post_1b,
-  bootstrap_samples = 500,
-  plot = TRUE
-)
-compare_mat(
-  mat1 = beta_post_1a,
-  mat2 = beta_post_1b,
-  bootstrap_samples = 1e4,
+  bootstrap_samples = 4e4,
   plot = TRUE
 )
 compare_mat(
@@ -345,6 +362,33 @@ compare_mat(
   plot = TRUE
 ) 
 ```
+### Compare different Null distributions
+```{r}
+compare_mat(
+  mat1 = beta_post_1a,
+  mat2 = beta_post_1b,
+  H0_prior_scale = .025, 
+  H0_distribution = "normal",
+  bootstrap_samples = 4e4,
+  plot = TRUE
+)
+compare_mat(
+  mat1 = beta_post_1a,
+  mat2 = beta_post_1b,
+  H0_prior_scale = .1, 
+  H0_distribution = "uniform",
+  bootstrap_samples = 4e4,
+  plot = TRUE
+)
+compare_mat(
+  mat1 = beta_post_1a,
+  mat2 = beta_post_1b, 
+  H0_distribution = "posterior_uncertainty",
+  bootstrap_samples = 4e4,
+  plot = TRUE
+)
+```
+
 
 ```{r}
 n <- 30
