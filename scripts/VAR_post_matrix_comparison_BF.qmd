@@ -374,7 +374,8 @@ compare_mat_Beta <-
            # if there is no overlap of posterior and null omit BF
            if (post_in_rope == 0 & prior_in_rope == 0) {
              log_BF <- NA
-             overlap_coef_post = NA
+             overlap_coef_post <- NA
+             overlap_coef_prior <- NA
            }
            # if there is an overlap for posterior and null but not for prior and null omit BF
            if (post_in_rope > 0 & prior_in_rope == 0) {
@@ -441,7 +442,7 @@ compare_mat_Beta <-
 ```{r}
 n_boot <- 1e4
 null_dist <- "normal"
-prior_scale <- .1
+prior_scale <- .5
 compare_mat_Beta(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
@@ -560,17 +561,21 @@ compare_mat_Beta(
 n <- 30
 log_BFs <- rep(NA, n)
 for (i in 1:n) {
-  log_BFs[i] <- compare_mat_Beta(
-    mat1 = beta_post_1a,
-    mat2 = beta_post_1b,
-    bootstrap_samples = 1e4,
-    plot = FALSE
-  )[1,3]
+  list <- compare_mat_Beta(
+  mat1 = beta_post_1a,
+  mat2 = beta_post_3,
+  bootstrap_samples = n_boot,
+  H1_custom_priors = custom_prior,
+  H0_distribution = "uniform",
+  plot = FALSE)
+  
+  log_BFs[i] <- list[[4]] - list[[6]]
 }
 ```
 
 ```{r}
-hist((log_BFs))
+hist(exp(log_BFs),breaks = 30)
+range(exp(log_BFs))
 sd(log_BFs)
 ```
 
