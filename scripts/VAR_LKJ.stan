@@ -21,7 +21,7 @@ parameters {
   
   // Contemporaneous
   cholesky_factor_corr[K] L_Theta;
-  vector<lower=0>[K] sigma_theta;
+  vector[K] sigma_theta;
 }
 ////////////////////////////////////////////////////////////////////////////////
 transformed parameters{
@@ -32,8 +32,8 @@ transformed parameters{
   // Precision matrix
   // BS: So this is just the Cholesky decomposition right?
   // and the pre-multiplication scales it?
-  matrix[K,K] Sigma = diag_pre_multiply(sigma_theta, L_Theta) * 
-                      diag_pre_multiply(sigma_theta, L_Theta)'; 
+  matrix[K,K] Sigma = diag_pre_multiply(exp(sigma_theta), L_Theta) * 
+                      diag_pre_multiply(exp(sigma_theta), L_Theta)'; 
   // Partial correlation matrix
   matrix[K,K] Rho;
   {
@@ -68,7 +68,7 @@ model {
       }
     }
   {
-    matrix[K, K] Sigma_chol = diag_pre_multiply(sigma_theta, L_Theta);
+    matrix[K, K] Sigma_chol = diag_pre_multiply(exp(sigma_theta), L_Theta);
     for(t in 2:T){
       // BS: What about intercept?
       vector[K] mu = Beta * Y[t-1,];
@@ -80,7 +80,7 @@ model {
 generated quantities{
   vector[T-1] log_lik;
   {
-    matrix[K, K] Sigma_chol = diag_pre_multiply(sigma_theta, L_Theta);
+    matrix[K, K] Sigma_chol = diag_pre_multiply(exp(sigma_theta), L_Theta);
     for(t in 2:T){
       // BS: What about intercept?
       vector[K] mu = Beta * Y[t-1,];

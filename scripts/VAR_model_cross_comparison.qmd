@@ -72,35 +72,38 @@ data_4 <- graphicalVAR::graphicalVARsim(nTime = t,
 
 ### Fit networks 
 ```{r message=FALSE}
+n_samples <- 1e4
+algorithm <- "variational"
+
 net_1a_fit <-
   fit_gVAR_stan(
     data = data_1a,
-    iter_sampling = 500,
-    method = "sampling",
+    iter_sampling = n_samples,
+    method = algorithm,
   )
 net_1b_fit <-
   fit_gVAR_stan(
     data = data_1b,
-    iter_sampling = 500,
-    method = "sampling"
+    iter_sampling = n_samples,
+    method = algorithm
   )
 net_2_fit <-
   fit_gVAR_stan(
     data = data_2,
-    iter_sampling = 500,
-    method = "sampling"
+    iter_sampling = n_samples,
+    method = algorithm
   )
 net_3_fit <-
   fit_gVAR_stan(
     data = data_3,
-    iter_sampling = 500,
-    method = "sampling"
+    iter_sampling = n_samples,
+    method = algorithm
   )
 net_4_fit <-
   fit_gVAR_stan(
     data = data_4,
-    iter_sampling = 500,
-    method = "sampling"
+    iter_sampling = n_samples,
+    method = algorithm
   )
 ```
 
@@ -134,97 +137,133 @@ loo_compare(net_1a_data_1a_loo, net_1a_data_4_loo)
 ## Model Comparison via marginal log-likelihoods
 ### Compute marginal logliks
 ```{r}
-method <- "warp3" # c("normal", "warp3")
+method <- "normal" # c("normal", "warp3")
 
 # foward
-net_1a_data_1a_logml <- bridgesampling::bridge_sampler(
+net_1a_data_1a_bridge <- bridgesampling::bridge_sampler(
   samples = net_1a_fit,
   stan_fit = net_1a_fit,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
-net_1a_data_1b_logml <- bridgesampling::bridge_sampler(
+net_1a_data_1b_bridge <- bridgesampling::bridge_sampler(
   samples = net_1a_fit,
   stan_fit = net_1a_fit,
   log_posterior = log_lik_gVAR,
   data = data_1b,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
-net_1a_data_2_logml <- bridgesampling::bridge_sampler(
+net_1a_data_2_bridge <- bridgesampling::bridge_sampler(
   samples = net_1a_fit,
   stan_fit = net_1a_fit,
   log_posterior = log_lik_gVAR,
   data = data_2,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
-net_1a_data_3_logml <- bridgesampling::bridge_sampler(
+net_1a_data_3_bridge <- bridgesampling::bridge_sampler(
   samples = net_1b_fit,
   stan_fit = net_1b_fit,
   log_posterior = log_lik_gVAR,
   data = data_3,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
-net_1a_data_4_logml <- bridgesampling::bridge_sampler(
+net_1a_data_4_bridge <- bridgesampling::bridge_sampler(
   samples = net_1b_fit,
   stan_fit = net_1b_fit,
   log_posterior = log_lik_gVAR,
   data = data_4,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
 # backwards
-net_1b_data_1a_logml <- bridgesampling::bridge_sampler(
+net_1b_data_1a_bridge <- bridgesampling::bridge_sampler(
   samples = net_1b_fit,
   stan_fit = net_1b_fit,
   log_posterior = log_lik_gVAR,
   data = data_1a,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
-net_2_data_1a_logml <- bridgesampling::bridge_sampler(
+net_2_data_1a_bridge <- bridgesampling::bridge_sampler(
   samples = net_2_fit,
   stan_fit = net_2_fit,
   log_posterior = log_lik_gVAR,
   data = data_1a,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
-net_3_data_1a_logml <- bridgesampling::bridge_sampler(
+net_3_data_1a_bridge <- bridgesampling::bridge_sampler(
   samples = net_3_fit,
   stan_fit = net_3_fit,
   log_posterior = log_lik_gVAR,
   data = data_1a,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 
-net_4_data_1a_logml <- bridgesampling::bridge_sampler(
+net_4_data_1a_bridge <- bridgesampling::bridge_sampler(
   samples = net_4_fit,
   stan_fit = net_4_fit,
   log_posterior = log_lik_gVAR,
   data = data_1a,
-  method = method
-)$logml
+  method = method,
+  silent = TRUE,
+  cores = cores
+)
 ```
+
+We can use the error_measures function to compute an approximate percentage error of the estimates:
+```{r}
+bridgesampling::error_measures(net_1a_data_1a_bridge)$percentage
+bridgesampling::error_measures(net_1a_data_1b_bridge)$percentage
+bridgesampling::error_measures(net_1a_data_2_bridge)$percentage
+bridgesampling::error_measures(net_1a_data_3_bridge)$percentage
+bridgesampling::error_measures(net_1a_data_4_bridge)$percentage
+```
+
+
 
 ### Compute BFs based on marginal log-likelihoods
 ```{r}
 # forward
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_1b_logml, log = TRUE)
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_2_logml, log = TRUE)
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_3_logml, log = TRUE)
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1a_data_4_logml, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_1a_data_1b_bridge, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_1a_data_2_bridge, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_1a_data_3_bridge, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_1a_data_4_bridge, log = TRUE)
 ```
 
 ```{r}
 # backwards
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_1b_data_1a_logml, log = TRUE)
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_2_data_1a_logml, log = TRUE)
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_3_data_1a_logml, log = TRUE)
-bridgesampling::bayes_factor(net_1a_data_1a_logml, net_4_data_1a_logml, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_1b_data_1a_bridge, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_2_data_1a_bridge, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_3_data_1a_bridge, log = TRUE)
+bridgesampling::bayes_factor(net_1a_data_1a_bridge, net_4_data_1a_bridge, log = TRUE)
 ```
+
+In this case, the Bayes factor is close to one, indicating that there is not much evidence for either model. We can also compute posterior model probabilities by using the post_prob function:
+```{r}
+bridgesampling::post_prob(net_1a_data_1a_bridge, net_1a_data_1b_bridge)
+```
+
+
 
 
 ### Experimental BFs
@@ -251,7 +290,7 @@ ll_1a_1b <- log_lik_gVAR(
   n_cores = parallel::detectCores() - 4
 ) %>% apply(., 1, sum) %>% median()
 
-(ll_1a_1a - net_1a_data_1a_logml) - (ll_1a_1b - net_1a_data_1b_logml)
+(ll_1a_1a - net_1a_data_1a_bridge$logml) - (ll_1a_1b - net_1a_data_1b_bridge$logml)
 ```
 
 ```{r}
@@ -266,7 +305,7 @@ ll_1a_2 <- log_lik_gVAR(
   n_cores = parallel::detectCores() - 4
 ) %>% apply(., 1, sum) %>% median()
 
-(ll_1a_1a - net_1a_data_1a_logml) - (ll_1a_2 - net_1a_data_2_logml)
+(ll_1a_1a - net_1a_data_1a_bridge$logml) - (ll_1a_2 - net_1a_data_2_bridge$logml)
 ```
 
 ```{r}
@@ -281,7 +320,7 @@ ll_1a_3 <- log_lik_gVAR(
   n_cores = parallel::detectCores() - 4
 ) %>% apply(., 1, sum) %>% median()
 
-(ll_1a_1a - net_1a_data_1a_logml) - (ll_1a_3 - net_1a_data_3_logml)
+(ll_1a_1a - net_1a_data_1a_bridge$logml) - (ll_1a_3 - net_1a_data_3_bridge$logml)
 ```
 
 ```{r}
@@ -296,6 +335,6 @@ ll_1a_4 <- log_lik_gVAR(
   n_cores = parallel::detectCores() - 4
 ) %>% apply(., 1, sum) %>% median()
 
-(ll_1a_1a - net_1a_data_1a_logml) - (ll_1a_4 - net_1a_data_4_logml)
+(ll_1a_1a - net_1a_data_1a_bridge$logml) - (ll_1a_4 - net_1a_data_4_bridge$logml)
 ```
 
