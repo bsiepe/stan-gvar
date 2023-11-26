@@ -80,6 +80,7 @@ model {
 generated quantities{
   vector[T-1] log_lik;
   {
+    // Cholesky decomposition of the covariance matrix
     matrix[K, K] Sigma_chol = diag_pre_multiply(exp(sigma_theta), L_Theta);
     for(t in 2:T){
       // BS: What about intercept?

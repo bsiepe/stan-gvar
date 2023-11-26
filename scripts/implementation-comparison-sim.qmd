@@ -4,17 +4,16 @@ format: html
 editor: visual
 ---
 
-Here, we investigate the different implementations of the Bayesian gVAR. 
+Here, we investigate the different implementations of the Bayesian gVAR.
 
 # Preparation
+
 ```{r}
 library(BGGM)
 library(tidyverse)
 library(here)
 source(here("scripts/functions.R"))
 ```
-
-
 
 # Writing simulation functions
 
@@ -59,9 +58,8 @@ sim_pars <- list(means = 0,
 
 ```
 
-
-
 ## Data Generating Function
+
 ```{r}
 sim_generate <- function(condition, fixed_objects = NULL) {
   
@@ -90,8 +88,6 @@ sim_generate <- function(condition, fixed_objects = NULL) {
   
 }
 ```
-
-
 
 ## Analysis Function
 
@@ -148,8 +144,6 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 }
 ```
 
-
-
 ## Summary Function
 
 ```{r}
@@ -201,7 +195,6 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 
 
 ```
-
 
 # Execute Simulation
 

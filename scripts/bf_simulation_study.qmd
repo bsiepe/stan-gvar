@@ -55,10 +55,11 @@ sim_pars <- list(means = 0,
 ```
 
 ## Data Generation Function
+
 We always simulate from the "true" graph, and then simulate either from another "true" graph (i.e., same DGP), or from two alternative modificaitons.
+
 ```{r}
 sim_generate <- function(condition, fixed_objects = NULL) {
-  
   # obtain fixed parameters
   # this is NOT like the typical attach
   SimDesign::Attach(fixed_objects)
@@ -69,19 +70,29 @@ sim_generate <- function(condition, fixed_objects = NULL) {
   
   
   # Simulate dataset under true
-  data_true <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = tp,
-                                              beta = dgp_list[["true"]]$beta,
-                                              kappa = dgp_list[["true"]]$kappa,
-                                              mean = means))
+  data_true <-
+    as.data.frame(
+      graphicalVAR::graphicalVARsim(
+        nTime = tp,
+        beta = dgp_list[["true"]]$beta,
+        kappa = dgp_list[["true"]]$kappa,
+        mean = means
+      )
+    )
   
   # Standardize data
   data_true <- as.data.frame(scale(data_true))
   
   # Simulate dataset under change
-  data_change <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = tp,
-                                              beta = dgp_list[[change]]$beta,
-                                              kappa = dgp_list[[change]]$kappa,
-                                              mean = means))
+  data_change <-
+    as.data.frame(
+      graphicalVAR::graphicalVARsim(
+        nTime = tp,
+        beta = dgp_list[[change]]$beta,
+        kappa = dgp_list[[change]]$kappa,
+        mean = means
+      )
+    )
   
   # Standardize data
   data_change <- as.data.frame(scale(data_change))
@@ -97,7 +108,9 @@ sim_generate <- function(condition, fixed_objects = NULL) {
 ```
 
 ## Analysis Function
+
 For now, only fit with BGGM, and then compute Bayes Factor.
+
 ```{r}
 sim_analyse <- function(condition, dat, fixed_objects = NULL) {
   
