@@ -4,13 +4,12 @@
 data {
   int<lower=0> K; // number of predictors
   int<lower=0> T; // number of time points
-  //int<lower=0> N; // number of 
   array[T] vector[K] Y; // responses
   // Priors
   matrix[K,K] prior_Beta_loc; // locations for priors on Beta matrix
-  matrix[K,K] prior_Beta_scale; // scales for priors on Beta matrix
-  matrix[K,K] prior_Rho_loc; // locations for priors on partial correlations
-  matrix[K,K] prior_Rho_scale; // scales for priors on partial correlations
+  matrix[K,K] prior_Beta_scale;  // scales for priors on Beta matrix
+  matrix[K,K] prior_Rho_loc;  // locations for priors on partial correlations
+  matrix[K,K] prior_Rho_scale;   // scales for priors on partial correlations
 }
 ////////////////////////////////////////////////////////////////////////////////
 parameters {
@@ -29,14 +28,13 @@ transformed parameters{
   matrix[K,K] Beta = Beta_raw .* prior_Beta_scale + prior_Beta_loc;
   //matrix[K,K] Beta = Beta_raw * sigma_Beta + mu_Beta;
   
-  // Precision matrix
-  // BS: So this is just the Cholesky decomposition right?
-  // and the pre-multiplication scales it?
+  // Covariance matrix from cholesky corr matrix and SDs
   matrix[K,K] Sigma = diag_pre_multiply(exp(sigma_theta), L_Theta) * 
                       diag_pre_multiply(exp(sigma_theta), L_Theta)'; 
   // Partial correlation matrix
   matrix[K,K] Rho;
   {
+    // Precision matrix
     matrix[K,K] Theta = inverse_spd(Sigma); 
     for(i in 1:K){
       for(j in 1:K){
@@ -61,13 +59,15 @@ model {
   for(i in 1:K){
     for(j in 1:K){
       if(i < j){
-        // BS: I think this maps beta to the unit interval?
+        // Scaled beta prior on partial correlations 
+        // (Rho[i,j] / 2 + 0.5 is a scaling to the unit interval)
         target+= beta_proportion_lpdf(
           Rho[i,j] / 2 + 0.5 | prior_Rho_loc[i,j], prior_Rho_scale[i,j]);
         }
       }
     }
   {
+    // Cholesky decomposition of the covariance matrix
     matrix[K, K] Sigma_chol = diag_pre_multiply(exp(sigma_theta), L_Theta);
     for(t in 2:T){
       // BS: What about intercept?
