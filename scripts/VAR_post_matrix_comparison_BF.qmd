@@ -371,6 +371,21 @@ compare_mat_Beta <-
              
              print(plot)
            }
+           
+           ### Compute BF for H1
+           mean_post <- mean(diff_post)
+           sd_post <- sd(diff_post)
+           mean_prior <- mean(diff_prior)
+           sd_prior <- sd(diff_prior)
+
+           BF_01 <- mean(exp(
+             dnorm(diff_null, mean_post, sd_post, log = TRUE) -
+             dnorm(diff_null, mean_prior, sd_prior, log = TRUE)))
+           BF_10 <- 1 / BF_01
+           
+           
+           
+           
            # if there is no overlap of posterior and null omit BF
            if (post_in_rope == 0 & prior_in_rope == 0) {
              log_BF <- NA
@@ -405,7 +420,7 @@ compare_mat_Beta <-
            # df with log_BF and overlap coef
            df_results <- data.frame(
              round(log_BF, 2),
-             round(exp(log_BF), 3),
+             BF_10,
              round(overlap_coef_post * 100, 2),
              round(post_in_rope, 2),
              round(overlap_coef_prior * 100, 2),
@@ -426,7 +441,7 @@ compare_mat_Beta <-
            return(invisible(
              list(
                log_BF_10 = log_BF,
-               BF_10 = exp(log_BF),
+               BF_10 = BF_10,
                post_overlap_coef = overlap_coef_post %>% as.double(),
                post_below_null_ub = post_in_rope,
                prior_overlap_coef = overlap_coef_prior %>% as.double(),
@@ -442,7 +457,7 @@ compare_mat_Beta <-
 ```{r}
 n_boot <- 1e4
 null_dist <- "normal"
-prior_scale <- .5
+prior_scale <- 100
 compare_mat_Beta(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,

@@ -107,6 +107,7 @@ hist((rbeta(1e6,a, b) - .5) * 2)
 stan_data <-
   list(K = K,
        "T" = n_t,
+       beep = rep(1:5, length.out = 200),
        Y = as.matrix(Y),
        prior_Rho_loc = prior_Rho_loc,
        prior_Rho_scale = prior_Rho_scale,
@@ -114,7 +115,7 @@ stan_data <-
        prior_Beta_scale = prior_Beta_scale
        )
 # Choose model to fit
-model_name <- "VAR_lkj"
+model_name <- "VAR_wishart_beep"
 # number of MCMC chains
 n_chains <- 4
 ```
@@ -394,74 +395,3 @@ net_4_fit <-
     method = "sampling"
   )
 ```
-
-```{r}
-
-cores <- parallel::detectCores() - 4
-net_1_data_1_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_1a, n_cores = cores)
-net_1_data_2_loo <- loo_gVAR(stan_fit = net_1a_fit, data = data_1b, n_cores = cores)
-net_2_data_2_loo <- loo_gVAR(stan_fit = net_1b_fit, data = data_1b, n_cores = cores)
-net_2_data_1_loo <- loo_gVAR(stan_fit = net_1b_fit, data = data_1a, n_cores = cores)
-```
-
-```{r}
-plot(net_1_data_1_loo)
-plot(net_1_data_2_loo)
-plot(net_2_data_2_loo)
-plot(net_2_data_1_loo)
-```
-
-```{r}
-loo_compare(net_1_data_1_loo, net_1_data_2_loo)
-loo_compare(net_2_data_2_loo, net_2_data_1_loo)
-```
-
-
-```{r}
-net_1_data_1_logml <- bridgesampling::bridge_sampler(
-  samples = net_1a_fit,
-  stan_fit = net_1a_fit
-)$logml
-
-net_1_data_2_logml <- bridgesampling::bridge_sampler(
-  samples = net_1a_fit,
-  stan_fit = net_1a_fit,
-  log_posterior = log_lik_gVAR,
-  data = data_1b
-)$logml
-
-net_2_data_2_logml <- bridgesampling::bridge_sampler(
-  samples = net_1b_fit,
-  stan_fit = net_1b_fit
-)$logml
-
-net_2_data_1_logml <- bridgesampling::bridge_sampler(
-  samples = net_1b_fit,
-  stan_fit = net_1b_fit,
-  log_posterior = log_lik_gVAR,
-  data = data_1b
-)$logml
-```
-
-```{r}
-bridgesampling::bayes_factor(net_1_data_1_logml, net_1_data_2_logml)
-bridgesampling::bayes_factor(net_2_data_2_logml, net_2_data_1_logml)
-```
-
-
-```{r}
-(net_1_data_1_loo$elpd - net_1_data_1_logml) - (net_1_data_2_loo$elpd - net_1_data_2_logml) 
-```
-
-
-```{r}
-var_lkj_draws <- rstan::extract(var_lkj_fit)
-var_lkj_LML <- bridgesampling::bridge_sampler(
-  samples = var_lkj_fit,
-  stan_fit = var_lkj_fit,
-  method = "warp3"
-)
-bridgesampling::logml(var_lkj_LML)
-var_lkj_LML$logml
-```
-

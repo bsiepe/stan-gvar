@@ -75,10 +75,13 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
 #------------------------------------------------------------------------------>
 fit_gVAR_stan <-
   function(data,
+           # a vector of beeks wit length of nrow(data)
+           beep = NULL, 
            priors = NULL,
            backend = "rstan",
            method = "sampling",
            cov_prior = "LKJ", # c("LKJ", "IW")
+           rmv_overnight = FALSE,
            iter_sampling = 500,
            iter_warmup = 500,
            n_chains = 4,
@@ -107,6 +110,7 @@ fit_gVAR_stan <-
       K = K,
       "T" = n_t,
       Y = as.matrix(Y),
+      beep = beep,
       prior_Rho_loc = prior_Rho_loc,
       prior_Rho_scale = prior_Rho_scale,
       prior_Beta_loc = prior_Beta_loc,
@@ -115,10 +119,22 @@ fit_gVAR_stan <-
     
     # Choose model to fit
     if (cov_prior == "LKJ") {
-      model_name <- "VAR_lkj"
+      if(isTRUE(rmv_overnight)){
+        # remove overnight effects
+        model_name <- "VAR_lkj_beep"
+      } else{
+        # standard model
+        model_name <- "VAR_lkj"
+      }
     }
     if (cov_prior == "IW") {
-      model_name <- "VAR_wishart"
+      if(isTRUE(rmv_overnight)){
+        # remove overnight effects
+        model_name <- "VAR_wishart_beep"
+      } else{
+        # standard model
+        model_name <- "VAR_wishart"
+      }
     }
     
     
