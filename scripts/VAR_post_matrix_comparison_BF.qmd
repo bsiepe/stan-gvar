@@ -169,7 +169,8 @@ compare_mat_Beta <-
                ) %>%
                do.call(rbind, .)
              # compute differences between matrices
-             diff_post <- abs(mat1 - mat2) %>%
+             diff_post_mat <- abs(mat1 - mat2) 
+             diff_post <- diff_post_mat %>%
                apply(., 1, sum)
              
              
@@ -199,7 +200,7 @@ compare_mat_Beta <-
                
              } else{
                # use default priors
-               diff_prior <-
+               diff_prior_mat <-
                  abs(
                    rnorm(
                      n = bootstrap_samples * ncol(mat1),
@@ -212,16 +213,19 @@ compare_mat_Beta <-
                        sd = H1_prior_scale
                      )
                  ) %>%
-                 matrix(., ncol = ncol(mat1)) %>%
+                 matrix(., ncol = ncol(mat1)) 
+               diff_prior <- diff_prior_mat %>% 
                  apply(., 1, sum)
              }
            } else{
              ### NO bootstrappping ###
              
-             diff_post <- mat1 - mat2
-             attr(diff_post, which = "class") <- "matrix"
+             diff_post_mat <- mat1 - mat2
+             attr(diff_post_mat, which = "class") <- "matrix"
              
-             diff_post <- abs(diff_post) %>%
+             diff_post_mat <- abs(diff_post_mat)
+             
+             diff_post <- diff_post_mat %>%
                apply(., 1, sum)
              
              # prior difference matrices
@@ -229,7 +233,8 @@ compare_mat_Beta <-
                  length(H1_custom_priors) == 2) {
                loc <- H1_custom_priors[[1]] %>% as.vector()
                scale <- H1_custom_priors[[2]] %>% as.vector()
-               diff_prior <- abs(
+               
+               diff_prior_mat <- abs(
                  lapply(1:length(loc), function(n) {
                    rnorm(n = 4e4,
                          mean = loc[n],
@@ -243,11 +248,12 @@ compare_mat_Beta <-
                    }) %>%
                    do.call(cbind, .)
                ) %>%
-                 matrix(., ncol = ncol(mat1)) %>%
+                 matrix(., ncol = ncol(mat1))
+                 diff_prior <- diff_prior_mat %>% 
                  apply(., 1, sum)
                # use default priors
              } else{
-               diff_prior <- abs(
+               diff_prior_mat <- abs(
                  rnorm(
                    n = 4e4 * ncol(mat1),
                    mean = 0,
@@ -259,7 +265,8 @@ compare_mat_Beta <-
                      sd = H1_prior_scale
                    )
                ) %>%
-                 matrix(., ncol = ncol(mat1)) %>%
+                 matrix(., ncol = ncol(mat1))
+               diff_prior <- diff_prior_mat %>% 
                  apply(., 1, sum)
              }
            }
@@ -269,7 +276,7 @@ compare_mat_Beta <-
              if (is.null(H0_prior_scale)) {
                H0_prior_scale <- .05
              }
-             diff_null <- abs(
+             diff_null_mat <- abs(
                rnorm(
                  n = 4e4 * ncol(mat1),
                  mean = 0,
@@ -281,7 +288,8 @@ compare_mat_Beta <-
                    sd = H0_prior_scale
                  )
              ) %>%
-               matrix(., ncol = ncol(mat1)) %>%
+               matrix(., ncol = ncol(mat1)) 
+              diff_null <-  diff_null_mat %>%
                apply(., 1, sum)
            }
            if (H0_distribution == "uniform") {
@@ -289,7 +297,7 @@ compare_mat_Beta <-
                H0_prior_scale <- .1
              }
              
-             diff_null <- abs(
+             diff_null_mat <- abs(
                runif(
                  n = 4e4 * ncol(mat1),
                  min = -H0_prior_scale,
@@ -301,7 +309,8 @@ compare_mat_Beta <-
                    max = H0_prior_scale
                  )
              ) %>%
-               matrix(., ncol = ncol(mat1)) %>%
+               matrix(., ncol = ncol(mat1)) 
+              diff_null <-  diff_null_mat %>%
                apply(., 1, sum)
            }
            if (H0_distribution == "posterior_uncertainty") {
@@ -373,15 +382,33 @@ compare_mat_Beta <-
            }
            
            ### Compute BF for H1
-           mean_post <- mean(diff_post)
-           sd_post <- sd(diff_post)
-           mean_prior <- mean(diff_prior)
-           sd_prior <- sd(diff_prior)
+           # univariate
+           mean_post_u <- mean(diff_post)
+           sd_post_u <- sd(diff_post)
+           mean_prior_u <- mean(diff_prior)
+           sd_prior_u <- sd(diff_prior)
 
-           BF_01 <- mean(exp(
-             dnorm(diff_null, mean_post, sd_post, log = TRUE) -
-             dnorm(diff_null, mean_prior, sd_prior, log = TRUE)))
-           BF_10 <- 1 / BF_01
+           BF_01_N <- mean(exp(
+             dnorm(diff_null, mean_post_u, sd_post_u, log = TRUE) -
+             dnorm(diff_null, mean_prior_u, sd_prior_u, log = TRUE)))
+
+           
+           mean_post <- apply(diff_post_mat, 2, mean)
+           sd_post <- apply(diff_post_mat, 2, sd)
+           Sigma_post <- diag(sd_post)
+                      
+           mean_prior <- apply(diff_prior_mat, 2, mean)
+           sd_prior <- apply(diff_prior_mat, 2, sd)
+           Sigma_prior <- diag(sd_prior)
+           
+           dens <- sapply(1:nrow(diff_null_mat), function(i) {
+               mvnfast::dmvn(diff_null_mat[i,], mean_post, Sigma_post, log = TRUE) -
+               mvnfast::dmvn(diff_null_mat[i,], mean_prior, Sigma_prior, log = TRUE)
+           }, simplify = TRUE)
+           print(is.na(dens) %>% as.numeric() %>% mean())
+           
+           BF_01_MVN <- mean(exp(dens), na.rm = TRUE)
+
            
            
            
@@ -419,20 +446,16 @@ compare_mat_Beta <-
            }
            # df with log_BF and overlap coef
            df_results <- data.frame(
-             round(log_BF, 2),
-             BF_10,
-             round(overlap_coef_post * 100, 2),
+             round(BF_01_N, 4),
+             round(BF_01_MVN, 4),
              round(post_in_rope, 2),
-             round(overlap_coef_prior * 100, 2),
              round(prior_in_rope, 2),
              row.names = NULL
            )
            names(df_results) <-
-             c("log BF_10",
-               "BF_10",
-               "% density overlap null-post",
+             c("BF_01 Normal",
+               "BF_01 MVN",
                "% posterior < null CI_high",
-               "% density overlap null-prior",
                "% prior < null CI_high")
            
            print(df_results)
@@ -440,49 +463,51 @@ compare_mat_Beta <-
            # return list with results silently
            return(invisible(
              list(
-               log_BF_10 = log_BF,
-               BF_10 = BF_10,
-               post_overlap_coef = overlap_coef_post %>% as.double(),
+               BF_01_N = BF_01_N,
+               BF_01_MVN = BF_01_MVN,
                post_below_null_ub = post_in_rope,
-               prior_overlap_coef = overlap_coef_prior %>% as.double(),
                prior_below_null_ub = prior_in_rope
              )
            ))
            # clean up
-           rm(mat1, mat2, diff_post, diff_prior, diff_null)
+           rm(mat1, mat2, diff_post, diff_post_mat, diff_prior, diff_prior_mat, diff_null)
            }
 ```
 
 ### Compare matrices
 ```{r}
-n_boot <- 1e4
-null_dist <- "normal"
-prior_scale <- 100
+n_boot <- 0
+null_dist <- "uniform"
+prior_scale <- .5
 compare_mat_Beta(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
-  bootstrap_samples = n_boot,H1_prior_scale = prior_scale,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
   plot = TRUE
 )
 compare_mat_Beta(
   mat1 = beta_post_1a,
   mat2 = beta_post_2,
-  bootstrap_samples = n_boot,H1_prior_scale = prior_scale,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
   plot = TRUE
 )
 compare_mat_Beta(
   mat1 = beta_post_1a,
   mat2 = beta_post_3,
-  bootstrap_samples = n_boot,H1_prior_scale = prior_scale,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
   plot = TRUE
-) 
+)
 compare_mat_Beta(
   mat1 = beta_post_1a,
   mat2 = beta_post_4,
-  bootstrap_samples = n_boot,H1_prior_scale = prior_scale,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
   plot = TRUE
 ) 
