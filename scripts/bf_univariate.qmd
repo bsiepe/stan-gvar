@@ -8,22 +8,23 @@ editor: visual
 
 In this document, we try to implement a univariate Bayes Factor (that extends to testing multiple variables at the same time). It is oriented at Williams et al. (Psych Methods, 2021).
 
-
-We assume normality, either for the regression coefficients or for the Fisher-z transformed variables.
-Then, we just compute the differences between all edges in the two networks to obtain a posterior (mean and covariance matrix).
-The prior under the H0 is given by sampling from the prior distribution and obtaining a mean and covariance matrix. 
+We assume normality, either for the regression coefficients or for the Fisher-z transformed variables. Then, we just compute the differences between all edges in the two networks to obtain a posterior (mean and covariance matrix). The prior under the H0 is given by sampling from the prior distribution and obtaining a mean and covariance matrix.
 
 # Preparations
+
 ```{r}
 library(BGGM)
 library(tidyverse)
 library(tsnet)
 library(mvtnorm)
 library(BFpack)
+library(here)
 ```
 
 ## Data generation
+
 Simulate data.
+
 ```{r}
 l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
 
@@ -55,7 +56,9 @@ data_3 <- graphicalVAR::graphicalVARsim(nTime = t,
 ```
 
 ## Estimation
+
 Estimate a BGGM GVAR model on each dataset.
+
 ```{r}
 pcor_prior <- 0.25
 var_prior <- 0.5
@@ -82,6 +85,7 @@ fit3 <- BGGM::var_estimate(as.data.frame(data_3),
 ```
 
 Sample from the prior distribution:
+
 ```{r}
 generate_prior_matrices <- function(nvar, var_prior, reps) {
   # Create a 3D array to store the matrices
@@ -105,6 +109,7 @@ prior_b <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 10
 ```
 
 Now create a function that computes the difference between each matrix in two 3d arrays, and a function that then estimates the multivariate normal distribution of this difference matrix.
+
 ```{r}
 compute_diff <- function(sample_mat_a, sample_mat_b) {
   
@@ -149,6 +154,7 @@ estimate_multivariate_normal <- function(sample_array) {
 ```
 
 Compute the difference between the prior matrices and estimate their distribution
+
 ```{r}
 diff_prior <- compute_diff(prior_a, prior_b)
 prior_diff_dist <- estimate_multivariate_normal(diff_prior)
@@ -156,6 +162,7 @@ prior_diff_dist <- estimate_multivariate_normal(diff_prior)
 ```
 
 Now do the same for the posterior differences
+
 ```{r}
 diff_posterior13 <- compute_diff(fit1_a$fit$beta, fit3$fit$beta)
 diff_posterior1ab <- compute_diff(fit1_a$fit$beta, fit1_b$fit$beta)
@@ -166,7 +173,9 @@ posterior_diff_dist1ab <- estimate_multivariate_normal(diff_posterior1ab)
 ```
 
 ## Bayes Factor
+
 Now we can compute the Bayes Factor.
+
 ```{r}
 approx_diff_density <- function(mean_vector, cov_matrix, point) {
    
@@ -191,18 +200,18 @@ post_dens1ab <- approx_diff_density(mean_vector = posterior_diff_dist1ab$mean_ve
 
 ```
 
-Try with BFpack: Don't understand yet what happens here. 
+Try with BFpack: Don't understand yet what happens here.
+
 ```{r}
 BFpack::BF(x = posterior_diff_dist13$mean_vector,
            Sigma = posterior_diff_dist13$cov_matrix,
            n = 10000)
 ```
 
-
-
-
 # New Idea: Collapsing all differences to a single distribution
+
 ## Prior
+
 ```{r}
 v1ab <- as.vector(diff_posterior1ab)
 v_prior <- as.vector(diff_prior)
@@ -212,15 +221,12 @@ plot(density(sqrt(v_prior^2)))
 
 ```
 
-
-
-
 # New Idea: Using the contrast matrix as Williams et al. 2020
-Implemented here: 
-https://github.com/donaldRwilliams/BGGM/blob/3768928273d94ed6c84b2b25f29782cc68452d38/R/ggm_compare_bf.default.R#L203
 
+Implemented here: https://github.com/donaldRwilliams/BGGM/blob/3768928273d94ed6c84b2b25f29782cc68452d38/R/ggm_compare_bf.default.R#L203
 
-Try this on the partial correlations: 
+Try this on the partial correlations:
+
 ```{r}
 # args
 groups <- 2   # compare 2 networks
@@ -261,8 +267,8 @@ mats <- BGGM:::create_matrices(framed = framed,
 
 ```
 
-
 Now compute Bayes Factors:
+
 ```{r}
 # loop through upper triangular
 for(i in seq_len(nrow(indices))){
@@ -270,12 +276,12 @@ for(i in seq_len(nrow(indices))){
     rho_ij <- indices[i,]
 
     # start
-    post_group <-  post_samp[[1]]$fisher_z[ rho_ij[1], rho_ij[2], (51:(iter + 50))]
+    post_group <-  post_samp[[1]]$fisher_z[ rho_ij[1], rho_ij[2], (51:(it + 50))]
     prior_group <-  prior_samp[[1]]
 
     # combined groups
     for(j in 2:(groups)){
-      post_group <-  cbind(post_group,  post_samp[[j]]$fisher_z[ rho_ij[1], rho_ij[2], (51:(iter + 50))])
+      post_group <-  cbind(post_group,  post_samp[[j]]$fisher_z[ rho_ij[1], rho_ij[2], (51:(it + 50))])
       prior_group <-  cbind(prior_group,  prior_samp[[j]])
     }
 
@@ -318,15 +324,122 @@ for(i in seq_len(nrow(indices))){
 BF_01 <-  BGGM:::symmetric_mat(BF_01_mat)
 
 pcor_diff <- BGGM:::symmetric_mat(pcor_diff)
-round(BF_01,2)
-round(pcor_diff,2)
+psych::cor.plot(round(BF_01,2))   
+psych::cor.plot(round(pcor_diff,2))
 
 # This makes no sense at all to me.
 
 ```
 
 
+## Do the same for the beta matrix
+```{r}
+# args
+groups <- 2   # compare 2 networks
+  
+# Get samples
+post_samp <- list()
+post_samp[[1]] <- fit1_a$fit
+post_samp[[2]] <- fit3$fit
 
+prior_samp <- list()
+# sample pxp from univariate normal distribution
+# using rnorm
+prior_beta_a <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 10000)
+prior_beta_b <- generate_prior_matrices(nvar = nvar, var_prior = var_prior, reps = 10000)
+
+# Number of variables
+p <- 6
+
+# store beta diff
+beta_diff <- BF_01_mat <- BF_10_mat <- matrix(0, p, p)
+
+# get all matrix indices
+indices <- which(beta_diff == 0, arr.ind = TRUE)
+
+# Get hypotheses as words
+groups_as_words <- BGGM:::numbers2words(1:groups)
+hyp <- paste(groups_as_words, sep = " ", collapse = "=")
+framed <- BGGM:::framer(hyp)
+
+# Create contrast matrix
+mats <- BGGM:::create_matrices(framed = framed,
+                          varnames = groups_as_words)
+
+
+```
+
+
+Now compute Bayes Factors:
+I don't think this works properly yet.
+```{r}
+# loop through upper triangular
+for(i in seq_len(nrow(indices))){
+
+    beta_ij <- indices[i,]
+
+    # start
+    post_group <-  post_samp[[1]]$beta[beta_ij[1], beta_ij[2], (51:(it + 50))]
+    prior_group <-  prior_samp[[1]]
+
+    # combined groups
+    for(j in 2:(groups)){
+      post_group <-  cbind(post_group,  post_samp[[j]]$beta[beta_ij[1], beta_ij[2], (51:(it + 50))])
+      prior_group <-  cbind(prior_group,  prior_samp[[j]])
+    }
+
+    # posterior covariance
+    cov_post <- cov(post_group)
+
+    # prior covariance
+    cov_prior <- cov(prior_group)
+
+    # posterior mean
+    post_mean <- colMeans(post_group)
+
+    # tranformed posterior
+    mu_post <- mats$R_e %*% post_mean
+    s_post <- mats$R_e %*% cov_post %*% t(mats$R_e)
+
+    # transformed prior
+    mu_prior <- mats$R_e %*% rep(0, groups)
+
+    s_prior <- mats$R_e %*% cov_prior %*% t(mats$R_e)
+
+    # bayes factor
+    log_BF_01 <- mvnfast::dmvn(X = t(mats$r_e),
+                            mu = mu_post,
+                            sigma = s_post,
+                            log = TRUE) -
+              mvnfast::dmvn(X = t(mats$r_e),
+                            mu = mu_prior,
+                            sigma = s_prior,
+                            log = TRUE)
+    log_BF_10 <- 
+              mvnfast::dmvn(X = t(mats$r_e),
+                            mu = mu_prior,
+                            sigma = s_prior,
+                            log = TRUE) -
+               mvnfast::dmvn(X = t(mats$r_e),
+                            mu = mu_post,
+                            sigma = s_post,
+                            log = TRUE)
+
+    BF_01_mat[beta_ij[1], beta_ij[2]] <- exp(log_BF_01)
+    BF_10_mat[beta_ij[1], beta_ij[2]] <- exp(log_BF_10)
+
+    if(groups == 2){
+      beta_diff[beta_ij[1], beta_ij[2]] <-  (post_mean[1] - post_mean[2])
+        }
+}
+
+# Show BF and beta_diffs
+BF_01 <- BF_01_mat
+BF_10 <- BF_10_mat
+psych::cor.plot(round(BF_10,0), main = "BF_10", cex = 1)   
+psych::cor.plot(round(beta_diff,2), main = "beta_diff")
+
+```
 
 
 
