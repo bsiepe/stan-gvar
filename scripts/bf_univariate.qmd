@@ -175,6 +175,8 @@ posterior_diff_dist1ab <- estimate_multivariate_normal(diff_posterior1ab)
 ## Bayes Factor
 
 Now we can compute the Bayes Factor.
+Idea: replace point 0 with matrix of plausible differences. Then compute the density at this point.
+Then we get a distribution of Bayes Factors. 
 
 ```{r}
 approx_diff_density <- function(mean_vector, cov_matrix, point) {
