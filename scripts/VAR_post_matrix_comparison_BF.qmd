@@ -198,7 +198,7 @@ source(here("scripts","functions.R"))
 n_boot <- 0
 null_dist <- "uniform"
 prior_scale <- .5
-null_scale <- .01
+null_scale <- .005
 param <- "Rho"
 compare_matrices(
   mat1 = rho_post_1a,
