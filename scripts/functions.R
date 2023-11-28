@@ -1,30 +1,55 @@
 #------------------------------------------------------------------------------>
-# Functions to extract the log_lik for the gVAR
+# Helper functions to transform between different draws formats
 #------------------------------------------------------------------------------>
+
 # Helper function to transform draws matrix into a list of matrices for Beta or Sigma
-draws2list <- function(draws_matrix) {
+draws_matrix2list <- function(draws_matrix) {
   iterations_list <-
     lapply(
       X = 1:nrow(draws_matrix),
       FUN = function(X) {
-        matrix(draws_matrix[X, ], ncol = sqrt(ncol(draws_matrix)), byrow = FALSE)
+        matrix(draws_matrix[X,], ncol = sqrt(ncol(draws_matrix)), byrow = FALSE)
       }
     )
   return(iterations_list)
 }
 
-
-# Function to compute the log_lik for the gVAR
-log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
+# Helper function to transform draws array into a draws matrix
+draws_matrix2array <- function(draws_matrix) {
+  array <-
+    array(t(draws_matrix),
+          dim = c(sqrt(ncol(draws_matrix)),
+                  sqrt(ncol(draws_matrix)),
+                  nrow(draws_matrix)))
   
+  return(array)
+}
+
+# Helper function to transform draws array into a draws matrix
+draws_array2matrix <- function(array_3d) {
+  iterations_list <-
+    lapply(
+      X = 1:dim(array_3d)[3],
+      FUN = function(X) {
+        as.vector(array_3d[, , X])
+      }
+    )
+  matrix <- do.call(rbind, iterations_list)
+  return(matrix)
+}
+
+#------------------------------------------------------------------------------>
+# Function to extract the log_lik for the gVAR
+#------------------------------------------------------------------------------>
+log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
   # # save chain ids
   # chain_ids <- draws_beta %>%
   #   as_draws_df() %>%
   #   select(.chain) %>% unlist()
   
   # prepare matrices from draws
-  Beta <- draws2list(draws_beta)
-  Sigma <- draws2list(draws_sigma)
+  Beta <- draws_matrix2list(draws_beta)
+  Sigma <- draws_matrix2list(draws_sigma)
   # number of iterations
   n_iter <- length(Beta)
   n_t <- nrow(Y)
@@ -38,27 +63,26 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
   # progress bar
   p <- progressr::progressor(along = 1:n_iter)
   # loop over iteraions
-  progressr::with_progress(
-    log_lik_list <- furrr::future_map(
-      .x = 1:n_iter,
-      .f = function(n) {
-        # loop over time points
-        log_lik_row <-
-          lapply(2:n_t, function(t) {
-            return(mvtnorm::dmvnorm(
-              x = Y[t, ],
-              mean = Beta[[n]] %*% Y[t - 1, ],
-              sigma = Sigma[[n]],
-              log = TRUE
-            ))
-          }) # end timepoint
-        log_lik_row <- do.call(cbind, log_lik_row)
-        return(log_lik_row)
-        p()
-      }
-      # end iterations
-      # end progress bar
-    ))
+  progressr::with_progress(log_lik_list <- furrr::future_map(
+    .x = 1:n_iter,
+    .f = function(n) {
+      # loop over time points
+      log_lik_row <-
+        lapply(2:n_t, function(t) {
+          return(mvtnorm::dmvnorm(
+            x = Y[t,],
+            mean = Beta[[n]] %*% Y[t - 1,],
+            sigma = Sigma[[n]],
+            log = TRUE
+          ))
+        }) # end timepoint
+      log_lik_row <- do.call(cbind, log_lik_row)
+      return(log_lik_row)
+      p()
+    }
+    # end iterations
+    # end progress bar
+  ))
   # end paralleliztion
   
   if (n_cores > 1) {
@@ -76,30 +100,29 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
 fit_gVAR_stan <-
   function(data,
            # a vector of beeks wit length of nrow(data)
-           beep = NULL, 
+           beep = NULL,
            priors = NULL,
            backend = "rstan",
            method = "sampling",
-           cov_prior = "LKJ", # c("LKJ", "IW")
+           cov_prior = "LKJ",
+           # c("LKJ", "IW")
            rmv_overnight = FALSE,
            iter_sampling = 500,
            iter_warmup = 500,
            n_chains = 4,
            n_cores = 4,
            ...) {
-    
-    
     Y <- data %>% apply(., 2, scale)
     K <- ncol(data)
     n_t <- nrow(data)
     
     # Specify Priors
-    if (is.null(priors)){
+    if (is.null(priors)) {
       prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
       prior_Rho_scale <- matrix(.4, nrow = K, ncol = K)
       prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
       prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)
-    }else{
+    } else{
       prior_Rho_loc <- priors[["prior_Rho_loc"]]
       prior_Rho_scale <- priors[["prior_Rho_scale"]]
       prior_Beta_loc <- priors[["prior_Beta_loc"]]
@@ -120,7 +143,7 @@ fit_gVAR_stan <-
     
     # Choose model to fit
     if (cov_prior == "LKJ") {
-      if(isTRUE(rmv_overnight)){
+      if (isTRUE(rmv_overnight)) {
         # remove overnight effects
         model_name <- "VAR_lkj_beep"
       } else{
@@ -129,7 +152,7 @@ fit_gVAR_stan <-
       }
     }
     if (cov_prior == "IW") {
-      if(isTRUE(rmv_overnight)){
+      if (isTRUE(rmv_overnight)) {
         # remove overnight effects
         model_name <- "VAR_wishart_beep"
       } else{
@@ -142,7 +165,7 @@ fit_gVAR_stan <-
     if (backend == "rstan") {
       # Compile model
       stan_model <-
-        rstan::stan_model(file = here("scripts", paste0(model_name, ".stan")))
+        rstan::stan_model(file = here::here("scripts", paste0(model_name, ".stan")))
       
       if (method == "sampling") {
         # Run sampler
@@ -177,7 +200,7 @@ fit_gVAR_stan <-
     } else{
       # Compile model
       stan_model <-
-        cmdstanr::cmdstan_model(stan_file = here("scripts", paste0(model_name, ".stan")),
+        cmdstanr::cmdstan_model(stan_file = here::here("scripts", paste0(model_name, ".stan")),
                                 pedantic = TRUE)
       if (method == "sampling") {
         # Run sampler
@@ -256,7 +279,7 @@ compare_matrices <-
            # number of bootstrap samples
            bootstrap_samples = 0,
            # c("Beta", "Rho")
-           parameter_type = "Beta", 
+           parameter_type = "Beta",
            # must be a list containing 2 matrices
            H1_custom_priors = NULL,
            # normal SD
@@ -271,11 +294,10 @@ compare_matrices <-
            plot_xlim = NULL,
            # upper limit of the y-axis
            plot_ylim = NULL) {
-    
     # fisher z-transform partial correlations
     if (parameter_type == "Rho") {
-      mat1 <- draws2list(mat1)
-      mat2 <- draws2list(mat2)
+      mat1 <- draws_matrix2list(mat1)
+      mat2 <- draws_matrix2list(mat2)
       
       mat1 <-
         purrr::map(mat1, function(x) {
@@ -306,7 +328,7 @@ compare_matrices <-
         purrr::map(
           .x = rows1,
           .f = function(.x) {
-            mat1[.x, ]
+            mat1[.x,]
           }
         ) %>%
         do.call(rbind, .)
@@ -314,7 +336,7 @@ compare_matrices <-
         purrr::map(
           .x = rows2,
           .f = function(.x) {
-            mat2[.x,]
+            mat2[.x, ]
           }
         ) %>%
         do.call(rbind, .)
@@ -479,7 +501,7 @@ compare_matrices <-
         purrr::map(
           .x = rows1_null,
           .f = function(.x) {
-            mat1[.x,]
+            mat1[.x, ]
           }
         ) %>%
         do.call(rbind, .)
@@ -499,7 +521,6 @@ compare_matrices <-
       length() / length(diff_prior) * 100
     
     ### Compute BF for H0
-    # univariate
     mean_post_u <- mean(diff_post)
     sd_post_u <- sd(diff_post)
     mean_prior_u <- mean(diff_prior)
@@ -532,7 +553,7 @@ compare_matrices <-
         plot_xlim <- max(median(diff_prior),
                          median(diff_post),
                          median(diff_null))
-
+        
       }
       if (is.null(plot_ylim)) {
         plot_ylim <- max(max(density.default(diff_post)[["y"]]),
@@ -546,8 +567,8 @@ compare_matrices <-
           names_to = "distribution",
           values_to = "value"
         ) #%>%
-        # rbind(data.frame(distribution = "null",
-        #                  value = diff_null))
+      # rbind(data.frame(distribution = "null",
+      #                  value = diff_null))
       
       plot <- df_samples %>%
         ggplot2::ggplot() +
@@ -618,66 +639,76 @@ compare_matrices <-
 # TODO should maybe be flexible to incorporate something else besides Sigma?
 # i.e. also theta (precision matrix?)
 
-stan_fit_convert <- 
-  function(stan_fit){
-   # check fitting backend
-   c <- class(stan_fit)
+stan_fit_convert <-
+  function(stan_fit) {
+    # check fitting backend
+    c <- class(stan_fit)
     
-   if (attr(c, "package") == "rstan") {  
-    draws_beta <- posterior::as_draws_matrix(rstan::extract(
-       stan_fit, pars = "Beta", permuted = FALSE
-     ))
-    draws_sigma <- posterior::as_draws_matrix(rstan::extract(
-       stan_fit, pars = "Sigma", permuted = FALSE
-     ))
-    draws_rho <- posterior::as_draws_matrix(rstan::extract(
-       stan_fit, pars = "Rho", permuted = FALSE
-     ))
-  } 
-   else{
-    draws_beta <- posterior::as_draws_matrix(stan_fit$draws("Beta"))
-    draws_sigma <- posterior::as_draws_matrix(stan_fit$draws("Sigma"))
-    draws_rho <- posterior::as_draws_matrix(stan_fit$draws("Rho"))
+    if (attr(c, "package") == "rstan") {
+      draws_beta <- posterior::as_draws_matrix(rstan::extract(stan_fit, pars = "Beta", permuted = FALSE))
+      draws_sigma <- posterior::as_draws_matrix(rstan::extract(stan_fit, pars = "Sigma", permuted = FALSE))
+      draws_rho <- posterior::as_draws_matrix(rstan::extract(stan_fit, pars = "Rho", permuted = FALSE))
+    }
+    else{
+      draws_beta <- posterior::as_draws_matrix(stan_fit$draws("Beta"))
+      draws_sigma <-
+        posterior::as_draws_matrix(stan_fit$draws("Sigma"))
+      draws_rho <- posterior::as_draws_matrix(stan_fit$draws("Rho"))
+    }
+    # Convert to array of p x p matrices
+    nvar <- sqrt(ncol(draws_beta))
+    
+    # Beta
+    split_beta <- split(draws_beta, seq(nrow(draws_beta)))
+    beta_l <- lapply(split_beta, function(x) {
+      matrix(x,
+             nrow = nvar,
+             ncol = nvar,
+             byrow = TRUE)
+    })
+    beta_array <-
+      array(unlist(beta_l), dim = c(nvar, nvar, nrow(draws_beta)))
+    
+    # Sigma
+    split_sigma <- split(draws_sigma, seq(nrow(draws_sigma)))
+    sigma_l <- lapply(split_sigma, function(x) {
+      matrix(x,
+             nrow = nvar,
+             ncol = nvar,
+             byrow = TRUE)
+    })
+    sigma_array <-
+      array(unlist(sigma_l), dim = c(nvar, nvar, nrow(draws_sigma)))
+    
+    # Rho
+    split_rho <- split(draws_rho, seq(nrow(draws_rho)))
+    rho_l <- lapply(split_rho, function(x) {
+      matrix(x,
+             nrow = nvar,
+             ncol = nvar,
+             byrow = TRUE)
+    })
+    rho_array <-
+      array(unlist(rho_l), dim = c(nvar, nvar, nrow(draws_rho)))
+    
+    # Return
+    return(list(
+      beta = beta_array,
+      sigma = sigma_array,
+      rho = rho_array
+    ))
+    
   }
-  # Convert to array of p x p matrices
-  nvar <- sqrt(ncol(draws_beta)) 
-   
-  # Beta 
-  split_beta <- split(draws_beta, seq(nrow(draws_beta)))
-  beta_l <- lapply(split_beta, function(x) {
-    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
-  })
-  beta_array <- array(unlist(beta_l), dim = c(nvar, nvar, nrow(draws_beta)))
-  
-  # Sigma
-  split_sigma <- split(draws_sigma, seq(nrow(draws_sigma)))
-  sigma_l <- lapply(split_sigma, function(x) {
-    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
-  })
-  sigma_array <- array(unlist(sigma_l), dim = c(nvar, nvar, nrow(draws_sigma)))
-  
-  # Rho
-  split_rho <- split(draws_rho, seq(nrow(draws_rho)))
-  rho_l <- lapply(split_rho, function(x) {
-    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
-  })
-  rho_array <- array(unlist(rho_l), dim = c(nvar, nvar, nrow(draws_rho)))
-  
-  # Return
-  return(list(beta = beta_array, sigma = sigma_array, rho = rho_array))
-  
-}
 
 
 
 # Compare fit to DGP ------------------------------------------------------
-array_compare_dgp <- function(post_samples, 
+array_compare_dgp <- function(post_samples,
                               dgp = NULL,
                               plot = TRUE,
                               samples_pcor_name = "rho",
                               dgp_pcor_name = "pcor") {
-  
-  # Compute mean for each array element across the third dimension 
+  # Compute mean for each array element across the third dimension
   # of post_samples
   post_samples_mean <- lapply(post_samples, function(x) {
     apply(x, c(1, 2), mean)
@@ -688,12 +719,13 @@ array_compare_dgp <- function(post_samples,
   
   # Compare median of beta to DGP
   beta_diff <- post_samples_median$beta - dgp$beta
-  rho_diff <- post_samples_median[[samples_pcor_name]]- dgp[[dgp_pcor_name]]
+  rho_diff <-
+    post_samples_median[[samples_pcor_name]] - dgp[[dgp_pcor_name]]
   
   
   result <- list(beta_diff = beta_diff, rho_diff = rho_diff)
   
-  if(isTRUE(plot)){
+  if (isTRUE(plot)) {
     # Plot both difference matrixes using cor.plot
     par(mfrow = c(1, 2))
     psych::cor.plot(beta_diff, main = "Beta difference")
@@ -705,20 +737,20 @@ array_compare_dgp <- function(post_samples,
 
 
 
-   
-   
+
+
 
 # -------------------------------------------------------------------------
 # Mplus -------------------------------------------------------------------
 # -------------------------------------------------------------------------
 
 # Create VAR Syntax in Mplus ----------------------------------------------
-mplus_var_syntax <- function(data, 
-                             varnames = colnames(data), 
-                             laggedvars = NULL, 
-                             cores = 1, 
-                             iterations = 4000, 
-                             model = NULL, 
+mplus_var_syntax <- function(data,
+                             varnames = colnames(data),
+                             laggedvars = NULL,
+                             cores = 1,
+                             iterations = 4000,
+                             model = NULL,
                              datafile = "mplus_data.dat",
                              syntaxfile = "mplus_model.inp",
                              samplesfile = "mplus_samples.dat") {
@@ -736,7 +768,14 @@ mplus_var_syntax <- function(data,
   
   # Default model if not specified
   if (is.null(model)) {
-    model <- paste(paste(varnames, " ON ", paste(varnames, "&1", sep = "", collapse = " "), ";", sep = ""), collapse = "\n")
+    model <-
+      paste(paste(
+        varnames,
+        " ON ",
+        paste(varnames, "&1", sep = "", collapse = " "),
+        ";",
+        sep = ""
+      ), collapse = "\n")
   }
   
   # # Write data to Mplus input format using MplusAutomation
@@ -748,16 +787,16 @@ mplus_var_syntax <- function(data,
   mplus_template <- "
 DATA:	    FILE = @@DATAFILE@@;    ! data file (should be in same folder)
 
-VARIABLE:	NAMES = @@VARNAMES@@;          ! providing names to the variables 
+VARIABLE:	NAMES = @@VARNAMES@@;          ! providing names to the variables
           USEVARIABLES = @@USEVARIABLES@@;   ! select variables for the analysis
 	        LAGGED = @@LAGGEDVARS@@;  ! creating first-order
-                                    ! lagged observed variables                                    
+                                    ! lagged observed variables
             MISSING = *;            ! missing value code
 
-ANALYSIS:	ESTIMATOR = BAYES;      ! set estimator (must be Bayes for DSEM) 
+ANALYSIS:	ESTIMATOR = BAYES;      ! set estimator (must be Bayes for DSEM)
 	        PROCESSORS = @@CORES@@;         ! using 2 processors
 	        BITERATIONS = @@ITERATIONS@@;   ! choose number of iterations;
-                                    ! minimum is now 2000; will be more if 
+                                    ! minimum is now 2000; will be more if
                                     ! the convergence criterion indicates
                                     ! convergence was not reached
 
@@ -770,9 +809,16 @@ SAVEDATA: BPARAMETERS IS @@SAMPLESFILE@@; ! saving posterior samples
   
   # Substitute placeholders with actual values
   mplus_syntax <- gsub("@@DATAFILE@@", datafile, mplus_syntax)
-  mplus_syntax <- gsub("@@VARNAMES@@", paste(varnames, collapse = " "), mplus_syntax)
-  mplus_syntax <- gsub("@@USEVARIABLES@@", paste(varnames, collapse = " "), mplus_syntax)
-  mplus_syntax <- gsub("@@LAGGEDVARS@@", paste(laggedvars, collapse = " "), mplus_syntax)
+  mplus_syntax <-
+    gsub("@@VARNAMES@@", paste(varnames, collapse = " "), mplus_syntax)
+  mplus_syntax <-
+    gsub("@@USEVARIABLES@@",
+         paste(varnames, collapse = " "),
+         mplus_syntax)
+  mplus_syntax <-
+    gsub("@@LAGGEDVARS@@",
+         paste(laggedvars, collapse = " "),
+         mplus_syntax)
   mplus_syntax <- gsub("@@CORES@@", cores, mplus_syntax)
   mplus_syntax <- gsub("@@ITERATIONS@@", iterations, mplus_syntax)
   mplus_syntax <- gsub("@@MODEL@@", model, mplus_syntax)
@@ -790,26 +836,30 @@ convert_mplus_samples <- function(mplus_output_file) {
   # browser()
   # Extract posterior samples
   mplus_res <- MplusAutomation::readModels(mplus_output_file)
-  mplus_samples <- as.data.frame(do.call(rbind, mplus_res$bparameters$valid_draw))
+  mplus_samples <-
+    as.data.frame(do.call(rbind, mplus_res$bparameters$valid_draw))
   
   # Extract columns
-  samples_beta <- mplus_samples %>% 
+  samples_beta <- mplus_samples %>%
     dplyr::select(contains(".ON"))
-  samples_sigma <- mplus_samples %>% 
+  samples_sigma <- mplus_samples %>%
     dplyr::select(contains("with"))
-  selected_columns <- names(mplus_samples) %>% 
+  selected_columns <- names(mplus_samples) %>%
     str_detect("\\d+_V\\d$")
-  samples_diag <- mplus_samples %>% 
+  samples_diag <- mplus_samples %>%
     dplyr::select(which(selected_columns))
   nvar <- sum(selected_columns)  # Number of variables
   
   # Convert posterior samples to matrix format
   split_beta <- split(samples_beta, 1:nrow(samples_beta))
   beta_samples <- lapply(split_beta, function(x) {
-    matrix(x, nrow = nvar, ncol = nvar, byrow = TRUE)
+    matrix(x,
+           nrow = nvar,
+           ncol = nvar,
+           byrow = TRUE)
   })
   # convert this list to an array
-  beta_samples <- array(unlist(beta_samples), 
+  beta_samples <- array(unlist(beta_samples),
                         dim = c(nvar, nvar, length(beta_samples)))
   split_sigma <- split(samples_sigma, 1:nrow(samples_sigma))
   
@@ -828,29 +878,34 @@ convert_mplus_samples <- function(mplus_output_file) {
       
       # Assign the value to the corresponding position in the covariance matrix
       cov_matrix[row_index, col_index] <- as.numeric(dat[, i])
-      cov_matrix[col_index, row_index] <- as.numeric(dat[, i])  # Covariance matrix is symmetric
+      cov_matrix[col_index, row_index] <-
+        as.numeric(dat[, i])  # Covariance matrix is symmetric
     }
     diag(cov_matrix) <- as.numeric(diag_values)
     return(cov_matrix)
   }
   
   # this is a very ugly mix of a loop and lapply, sorry...
-  sigma_samples <- simplify2array(lapply(seq_along(split_sigma), function(i) {
-    create_cov_mat(split_sigma[[i]], samples_diag[i,])
-  }))
+  sigma_samples <-
+    simplify2array(lapply(seq_along(split_sigma), function(i) {
+      create_cov_mat(split_sigma[[i]], samples_diag[i, ])
+    }))
   
   
   # Convert to partial correlations
   pcor_samples <- array(NA, dim = dim(sigma_samples))
-  for(i in 1:dim(sigma_samples)[3]) {
+  for (i in 1:dim(sigma_samples)[3]) {
     # take inverse of covariance matrix (i.e. precision)
     # and convert to partial correlation matrix
-    tmp <- -stats::cov2cor(solve(sigma_samples[,,i]))
+    tmp <- -stats::cov2cor(solve(sigma_samples[, , i]))
     diag(tmp) <- 0
     pcor_samples[, , i] <- tmp
   }
   
-  return(list(beta = beta_samples, sigma = sigma_samples, rho = pcor_samples))
+  return(list(
+    beta = beta_samples,
+    sigma = sigma_samples,
+    rho = pcor_samples
+  ))
 }
 
-   

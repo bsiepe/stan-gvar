@@ -154,7 +154,9 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 ```
 
 ## Summary Function
+
 TODO FIX RHO_DIFF
+
 ```{r}
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
@@ -220,7 +222,7 @@ sim_results <- SimDesign::runSimulation(design = df_design,
                                     analyse = sim_analyse, 
                                     summarise = sim_summarise, 
                                     fixed_objects = sim_pars,
-                                    parellel = TRUE,
+                                    parallel = TRUE,
                                     # save_results = TRUE,
                                     save_seeds = TRUE)
 

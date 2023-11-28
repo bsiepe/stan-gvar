@@ -313,9 +313,17 @@ net_3 <- BGGM::var_estimate(data_3[,-1],
 Posterior samples are in a slightly different format when we use the BGGM package
 in BGGM, they are in a tensor format. I think this will be the most efficient format for the test.
 ```{r}
-net_1$fit$beta
-draws_beta %>% View()
+source(here("scripts","functions.R"))
+dim(net_1$fit$beta)
+arr <- net_1$fit$beta
+dim(arr)
+mat <- draws_array2matrix(arr)
 
+arr2 <- 
+draws_matrix2array(mat)
+dim(arr2)
+arr[,,1]
+arr2[,,1]
 ```
 
 

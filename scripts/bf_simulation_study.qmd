@@ -12,6 +12,8 @@ library(tidyverse)
 library(BGGM)
 library(here)
 
+source(here::here("scripts","functions.R"))
+
 ```
 
 # Writing Simulation Functions
@@ -21,21 +23,26 @@ library(here)
 ```{r}
 ## Variable Objects
 # Number of timepoints
-tp <- c(50, 200, 500)
+tp <- 400
 
 # Amount of change between DGP
 change <- c("true", "const05", "const15")
 
+# scale for null range
+null_scale <- c(.005, .01, .05, .1)
 
-df_design <- createDesign(tp = tp,
-                       change = change)
+df_design <- createDesign(
+  tp = tp,
+  change = change,
+  null_scale = null_scale
+  )
 
 ## Fixed Objects
 # These are used in SimDesign to specify objects passed to later functions
 # that do not vary across conditions
 
 # DGPs
-l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+l_changed_graphs_0305 <- readRDS(here::here("data/l_changed_graphs_0305.rds"))
 
 gvar_mod_00 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
 gvar_mod_05 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
@@ -45,12 +52,13 @@ dgp_list <- list("true" = gvar_mod_00,
                  "const15" = gvar_mod_15)
 
 # Further simulation parameters
-sim_pars <- list(means = 0,
+sim_pars <- list(dgp_list = dgp_list,
+                 means = 0,
                  nvar = 6,
                  rho_prior = 0.25,
                  beta_prior = 0.5,
-                 bggm_iter = 50000,
-                 dist_draws = 10000)   # number of distances computed between matrices
+                 bggm_iter = 1e4
+                 )
 
 ```
 
@@ -67,7 +75,8 @@ sim_generate <- function(condition, fixed_objects = NULL) {
   # obtain condition parameters
   tp <- condition$tp
   change <- condition$change
-  
+  null_scale <- condition$null_scale
+  dgp_list = fixed_objects$dgp_list
   
   # Simulate dataset under true
   data_true <-
@@ -131,33 +140,43 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
                                  iter = bggm_iter, 
                                  progress = FALSE)
   
-  #--- Calculate differences
-  # Obtain indicators for comparison
-  comp_ind <- replicate(dist_draws, sample(1:bggm_iter, 2, replace = TRUE))
-
-  # Obtain difference matrix for beta
-  diff_beta <- array(NA, dim = c(nvar, nvar, dist_draws))
-  
-  for (i in 1:dist_draws) {
-    diff_beta[,,i] <- fit_bggm_true$fit$beta[,,comp_ind[1,i]] - fit_bggm_change$fit$beta[,,comp_ind[2,i]]
-  }
-  
-  # Obtain difference for pcor
-  diff_pcor <- array(NA, dim = c(nvar, nvar, dist_draws))
-  
-  for (i in 1:dist_draws) {
-    diff_pcor[,,i] <- fit_bggm_true$fit$pcors[,,comp_ind[1,i]] - fit_bggm_change$fit$pcors[,,comp_ind[2,i]]
-  }
-  
-  
   #--- Obtain Bayes Factor
-  # Just for testing for now
-  bf <- 1
-  
+  source(here::here("scripts","functions.R"))
+
+  # BFs for Beta
+  mat_comp_beta <- compare_matrices(
+    mat1 = draws_array2matrix(fit_bggm_true$fit$beta),
+    mat2 = draws_array2matrix(fit_bggm_change$fit$beta),
+    parameter_type = "Beta", 
+    bootstrap_samples = 0,
+    H1_prior_scale = .5,
+    H0_distribution = "uniform",
+    H0_prior_scale = condition$null_scale,
+    plot = FALSE
+)
+    # BFs for Beta for Rho
+  mat_comp_rho <- compare_matrices(
+    mat1 = draws_array2matrix(fit_bggm_true$fit$pcors),
+    mat2 = draws_array2matrix(fit_bggm_change$fit$pcors),
+    parameter_type = "Rho", 
+    bootstrap_samples = 0,
+    H1_prior_scale = .5,
+    H0_distribution = "uniform",
+    H0_prior_scale = condition$null_scale,
+    plot = FALSE
+)
   #--- Return
-  ret_analyse <- list(bf = bf,
-              diff_beta = diff_beta,
-              diff_pcor = diff_pcor)
+  ret_analyse <- c(
+    # Beta
+    bf_beta = mat_comp_beta[[1]],
+    log_bf_beta = mat_comp_beta[[2]],
+    post_in_null_beta = mat_comp_beta[[3]],
+    # Rho
+    bf_rho = mat_comp_rho[[1]],
+    log_bf_rho = mat_comp_rho[[2]],
+    post_in_null_rho = mat_comp_rho[[3]]
+    )
+  
   return(ret_analyse)
   
 }
@@ -169,34 +188,20 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
   SimDesign::Attach(fixed_objects)  
-  
-  # Note: This is a useless comparison, just goes to show that the function works
-  # Compute mean and SD across difference matrices
-  l_diff_beta_mean <- lapply(seq_along(results), function(i){
-    apply(results[[i]]$diff_beta, c(1,2), mean)
-  })
-  l_diff_beta_sd <- lapply(seq_along(results), function(i){
-    apply(results[[i]]$diff_beta, c(1,2), sd)
-  })
-  l_diff_pcor_mean <- lapply(seq_along(results), function(i){
-    apply(results[[i]]$diff_pcor, c(1,2), mean)
-  })
-  l_diff_pcor_sd <- lapply(seq_along(results), function(i){
-    apply(results[[i]]$diff_pcor, c(1,2), sd)
-  })
-  
-  # Compute mean
-  diff_beta_mean <- mean(unlist(l_diff_beta_mean))
-  diff_pcor_mean <- mean(unlist(l_diff_pcor_mean))
-  
-  
+
   # Compute mean of Bayes Factor
-  # bf_mean <- mean(results$bf, na.rm = TRUE)
-  # bf_sd <- sd(results$bf)
+  bf_mean_beta <- mean(results$bf_beta)
+  bf_sd_beta <- sd(results$bf_beta)
+  bf_mean_rho <- mean(results$bf_rho)
+  bf_sd_rho <- sd(results$bf_rho)
   
   # Return all results
-  ret_summarise <- c(diff_beta_mean = diff_beta_mean,
-              diff_pcor_mean = diff_pcor_mean)
+  ret_summarise <- c(bf_mean_beta = bf_mean_beta,
+                     bf_sd_beta = bf_sd_beta,
+                     bf_mean_rho = bf_mean_rho,
+                     bf_sd_rho = bf_sd_rho
+                    )
+  
   return(ret_summarise)
 }
 ```
@@ -205,15 +210,35 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 
 ```{r}
 res <- runSimulation(design = df_design, 
-                     replications = 2, 
+                     packages = c("tidyverse", "here"),
+                     replications = 100, 
                      generate = sim_generate, 
                      analyse = sim_analyse, 
                      summarise = sim_summarise, 
                      fixed_objects = sim_pars,
-                     save_results = TRUE,
-                     save_seed = TRUE,
+                     store_results = TRUE,
+                     save_seeds = FALSE,
                      parallel = TRUE)
-res
+
+res_df <- SimExtract(res, what = 'results')
+
+```
+
+```{r}
+res_df
+```
+
+```{r}
+res_df%>%
+  ggplot2::ggplot() +
+  geom_boxplot(aes(y = mean(log_bf_beta))) +
+  facet_grid(change ~ null_scale)
+
 ```
 
 # Analyze Simulation
+
+```{r}
+sim_sum <- SimExtract(res, "summarise")
+sim_sum
+```

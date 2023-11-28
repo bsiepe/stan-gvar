@@ -129,23 +129,6 @@ rho_post_4 <-
   rstan::extract(net_4_fit, "Rho", permuted = FALSE) %>% as_draws_matrix()
 ```
 
-```{r}
-mat1 <- draws2list(rho_post_1a)
-mat2 <- draws2list(rho_post_1b)
-
-mat1 <-
-  purrr::map(mat1, function(x) {
-    DescTools::FisherZ(x) %>%  .[lower.tri(.)] %>% as.vector()
-  })
-mat2 <-
-  purrr::map(mat2, function(x) {
-    DescTools::FisherZ(x) %>% as.vector()
-  })
-
-mat1 <- do.call(rbind, mat1)
-mat2 <- do.call(rbind, mat2)
-```
-
 ### Compare matrices
 #### Beta
 ```{r}
