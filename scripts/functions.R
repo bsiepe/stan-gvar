@@ -85,6 +85,7 @@ fit_gVAR_stan <-
            iter_sampling = 500,
            iter_warmup = 500,
            n_chains = 4,
+           n_cores = 4,
            ...) {
     
     
@@ -151,7 +152,7 @@ fit_gVAR_stan <-
           #pars = c("Beta_raw"),
           #include = FALSE,
           chains = n_chains,
-          cores = n_chains,
+          cores = n_cores,
           iter = iter_sampling + iter_warmup,
           warmup = iter_warmup,
           refresh = 500,
@@ -183,7 +184,7 @@ fit_gVAR_stan <-
         stan_fit <- stan_model$sample(
           data = stan_data,
           chains = n_chains,
-          parallel_chains = n_chains,
+          parallel_chains = n_cores,
           iter_warmup = iter_warmup,
           iter_sampling = iter_sampling,
           refresh = 500,
@@ -311,8 +312,9 @@ stan_fit_convert <-
 array_compare_dgp <- function(post_samples, 
                               dgp = NULL,
                               plot = TRUE,
+                              samples_pcor_name = "rho",
                               dgp_pcor_name = "pcor") {
-
+  
   # Compute mean for each array element across the third dimension 
   # of post_samples
   post_samples_mean <- lapply(post_samples, function(x) {
@@ -324,7 +326,7 @@ array_compare_dgp <- function(post_samples,
   
   # Compare median of beta to DGP
   beta_diff <- post_samples_median$beta - dgp$beta
-  rho_diff <- post_samples_median$rho - dgp[[dgp_pcor_name]]
+  rho_diff <- post_samples_median[[samples_pcor_name]]- dgp[[dgp_pcor_name]]
   
   
   result <- list(beta_diff = beta_diff, rho_diff = rho_diff)
@@ -335,9 +337,10 @@ array_compare_dgp <- function(post_samples,
     psych::cor.plot(beta_diff, main = "Beta difference")
     psych::cor.plot(rho_diff, main = "Rho difference", upper = FALSE)
   }
-
+  
   return(result)
 }
+
 
 
    
