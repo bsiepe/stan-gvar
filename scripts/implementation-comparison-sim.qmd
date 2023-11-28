@@ -23,9 +23,14 @@ source(here("scripts/functions.R"))
 ## Variable Objects
 # Number of timepoints
 tp <- c(50, 200, 500)
+# For testing
+tp <- 200
 
 # Amount of change between DGP
 dgp <- c("graph3", "graph4", "graph5")
+
+# For testing
+dgp <- "graph4"
 
 
 df_design <- createDesign(tp = tp,
@@ -52,7 +57,7 @@ sim_pars <- list(means = 0,
                  rho_prior = 0.25,
                  beta_prior = 0.5,
                  bggm_iter = 50000,
-                 stan_iter = 1000,
+                 stan_iter = 500,
                  mplus_iter = 2000,
                  dist_draws = 10000)   # number of distances computed between matrices
 
@@ -111,9 +116,12 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     data = dat,
     cov_prior = "LKJ",
     priors = NULL,
+    n_cores = 1,
     iter_sampling = stan_iter,
     method = "sampling"
   )
+  # Convert to array
+  stan_arr_lkj <- stan_fit_convert(fit_stan_lkj)
   
   
   #--- Fit Stan Inverse Wishart
@@ -121,9 +129,12 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     data = dat,
     cov_prior = "IW",
     priors = NULL,
+    n_cores = 1,
     iter_sampling = stan_iter,
     method = "sampling"
   )
+  # Convert to array
+  stan_arr_iw <- stan_fit_convert(fit_stan_iw)
   
   #--- Fit Mplus defaults
   # Not for now, 
@@ -133,23 +144,23 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
   
   
   
-  
-  
   #--- Return
   ret_analyse <- list(fit_bggm = fit_bggm,
-                      fit_stan_lkj = fit_stan_lkj,
-                      fit_stan_iw = fit_stan_iw)
+                      fit_stan_lkj = stan_arr_lkj,
+                      fit_stan_iw = stan_arr_iw)
   return(ret_analyse)
   
 }
 ```
 
 ## Summary Function
-
+TODO FIX RHO_DIFF
 ```{r}
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
   SimDesign::Attach(fixed_objects)  
+  
+  ret <- list()
   
   #--- Obtain condition parameters and DGP
   dgp_ind <- condition$dgp
@@ -157,37 +168,41 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
   
   #--- Compare against DGP
+  # lapply over results
   
   #-- BGGM
+  comp_bggm <- lapply(results, function(x){
+    array_compare_dgp(x$fit_bggm$fit,
+                      dgp = dgp,
+                      samples_pcor_name = "pcors",
+                      plot = FALSE)
+  })
   
+
   
   
   #-- Stan LKJ
-  # Convert to array
-  stan_arr_lkj <- stan_fit_convert(results$stan_fit_lkj)
-  
   # Compare to dgp
-  comp_lkj<- array_compare_dgp(stan_arr_lkj,
-                               dgp = dgp,
-                               plot = FALSE)
+  comp_lkj <- lapply(results, function(x){
+    array_compare_dgp(x$fit_stan_lkj,
+                      dgp = dgp,
+                      plot = FALSE)
+  })
+    
   
   #-- Stan IW
-  # Convert to array
-  stan_arr_iw <- stan_fit_convert(results$stan_fit_iw)
-  comp_iw <- array_compare_dgp(stan_arr_iw,
-                               dgp = dgp,
-                               plot = FALSE)
-  
-  
+  comp_iw <- lapply(results, function(x){
+    array_compare_dgp(x$fit_stan_iw,
+                      dgp = dgp,
+                      plot = FALSE)
+  })
   #--- Compare with one another
-  
-  
-  
-  
+  # Not for now
   
   
   # Return all results
-  ret_summarise <- c(comp_iw = comp_iw,
+  ret_summarise <- c(comp_bggm = comp_bggm,
+                     comp_iw = comp_iw,
                      comp_lkj = comp_lkj)
   return(ret_summarise)
 }
@@ -200,10 +215,16 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 
 ```{r}
 sim_results <- SimDesign::runSimulation(design = df_design, 
-                                    replications = 2, 
+                                    replications = 1, 
                                     generate = sim_generate, 
                                     analyse = sim_analyse, 
                                     summarise = sim_summarise, 
-                                    fixed_objects = sim_pars)
+                                    fixed_objects = sim_pars,
+                                    parellel = TRUE,
+                                    # save_results = TRUE,
+                                    save_seeds = TRUE)
+
+
+sim_sum <- SimExtract(sim_results, "summarise")
 
 ```
