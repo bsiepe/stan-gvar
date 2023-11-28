@@ -209,7 +209,10 @@ res <- runSimulation(design = df_design,
                      generate = sim_generate, 
                      analyse = sim_analyse, 
                      summarise = sim_summarise, 
-                     fixed_objects = sim_pars)
+                     fixed_objects = sim_pars,
+                     save_results = TRUE,
+                     save_seed = TRUE,
+                     parallel = TRUE)
 res
 ```
 
