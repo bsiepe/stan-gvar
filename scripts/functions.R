@@ -245,7 +245,369 @@ loo_gVAR <- function(stan_fit, data, n_cores = 1) {
   return(loo)
 }
 
+#------------------------------------------------------------------------------>
+# Function to Compute the Bayes Factor for a Posterior Difference Matrix
+#------------------------------------------------------------------------------>
 
+compare_matrices <-
+  function(mat1,
+           mat2,
+           # number of bootstrap samples
+           bootstrap_samples = 0,
+           # c("Beta", "Rho")
+           parameter_type = "Beta", 
+           # must be a list containing 2 matrices
+           H1_custom_priors = NULL,
+           # normal SD
+           H1_prior_scale = 0.5,
+           # "normal" = SD, "uniform" = range / 2
+           H0_prior_scale = NULL,
+           # c("normal", "uniform", "posterior_uncertainty")
+           H0_distribution = "uniform",
+           # plot densities for null, posterior, and prior
+           plot = TRUE,
+           # upper limit of the x-axis
+           plot_xlim = NULL,
+           # upper limit of the y-axis
+           plot_ylim = NULL) {
+    
+    # fisher z-transform partial correlations
+    if (parameter_type == "Rho") {
+      mat1 <- draws2list(mat1)
+      mat2 <- draws2list(mat2)
+      
+      mat1 <-
+        purrr::map(mat1, function(x) {
+          DescTools::FisherZ(x) %>% .[lower.tri(.)] %>% as.vector()
+        })
+      mat2 <-
+        purrr::map(mat2, function(x) {
+          DescTools::FisherZ(x) %>% .[lower.tri(.)] %>% as.vector()
+        })
+      
+      mat1 <- do.call(rbind, mat1)
+      mat2 <- do.call(rbind, mat2)
+    }
+    
+    #### with bootstrapping ###
+    if (bootstrap_samples > 0) {
+      # sample rows from posterior iterations
+      rows1 <-
+        sample(1:nrow(mat1),
+               size = bootstrap_samples,
+               replace = TRUE)
+      rows2 <-
+        sample(1:nrow(mat2),
+               size = bootstrap_samples,
+               replace = TRUE)
+      # assemble new posterior draws_matrices
+      mat1 <-
+        purrr::map(
+          .x = rows1,
+          .f = function(.x) {
+            mat1[.x, ]
+          }
+        ) %>%
+        do.call(rbind, .)
+      mat2 <-
+        purrr::map(
+          .x = rows2,
+          .f = function(.x) {
+            mat2[.x,]
+          }
+        ) %>%
+        do.call(rbind, .)
+      # compute differences between matrices
+      diff_post_mat <- abs(mat1 - mat2)
+      diff_post <- diff_post_mat %>%
+        apply(., 1, sum)
+      
+      
+      ### compute prior difference matrices
+      
+      # use custom priors if exist
+      if (typeof(H1_custom_priors) == "list" &
+          length(H1_custom_priors) == 2) {
+        loc <- H1_custom_priors[[1]] %>% as.vector()
+        scale <- H1_custom_priors[[2]] %>% as.vector()
+        diff_prior <- abs(
+          lapply(1:length(loc), function(n) {
+            rnorm(n = bootstrap_samples,
+                  mean = loc[n],
+                  sd = scale[n])
+          }) %>%
+            do.call(cbind, .) -
+            lapply(1:length(loc), function(n) {
+              rnorm(n = bootstrap_samples,
+                    mean = loc[n],
+                    sd = scale[n])
+            }) %>%
+            do.call(cbind, .)
+        ) %>%
+          matrix(., ncol = ncol(mat1)) %>%
+          apply(., 1, sum)
+        
+      } else{
+        # use default priors
+        diff_prior_mat <-
+          abs(
+            rnorm(
+              n = bootstrap_samples * ncol(mat1),
+              mean = 0,
+              sd = H1_prior_scale
+            ) -
+              rnorm(
+                n = bootstrap_samples * ncol(mat1),
+                mean = 0,
+                sd = H1_prior_scale
+              )
+          ) %>%
+          matrix(., ncol = ncol(mat1))
+        diff_prior <- diff_prior_mat %>%
+          apply(., 1, sum)
+      }
+    } else{
+      ### NO bootstrappping ###
+      
+      diff_post_mat <- mat1 - mat2
+      attr(diff_post_mat, which = "class") <- "matrix"
+      
+      diff_post_mat <- abs(diff_post_mat)
+      
+      diff_post <- diff_post_mat %>%
+        apply(., 1, sum)
+      
+      # prior difference matrices
+      if (typeof(H1_custom_priors) == "list" &
+          length(H1_custom_priors) == 2) {
+        loc <- H1_custom_priors[[1]] %>% as.vector()
+        scale <- H1_custom_priors[[2]] %>% as.vector()
+        
+        diff_prior_mat <- abs(
+          lapply(1:length(loc), function(n) {
+            rnorm(n = 4e4,
+                  mean = loc[n],
+                  sd = scale[n])
+          }) %>%
+            do.call(cbind, .) -
+            lapply(1:length(loc), function(n) {
+              rnorm(n = 4e4,
+                    mean = loc[n],
+                    sd = scale[n])
+            }) %>%
+            do.call(cbind, .)
+        ) %>%
+          matrix(., ncol = ncol(mat1))
+        diff_prior <- diff_prior_mat %>%
+          apply(., 1, sum)
+        # use default priors
+      } else{
+        diff_prior_mat <- abs(
+          rnorm(
+            n = 4e4 * ncol(mat1),
+            mean = 0,
+            sd = H1_prior_scale
+          ) -
+            rnorm(
+              n = 4e4 * ncol(mat1),
+              mean = 0,
+              sd = H1_prior_scale
+            )
+        ) %>%
+          matrix(., ncol = ncol(mat1))
+        diff_prior <- diff_prior_mat %>%
+          apply(., 1, sum)
+      }
+    }
+    
+    # distribution for null rope range
+    if (H0_distribution == "normal") {
+      if (is.null(H0_prior_scale)) {
+        H0_prior_scale <- .005
+      }
+      diff_null_mat <- abs(
+        rnorm(
+          n = 4e4 * ncol(mat1),
+          mean = 0,
+          sd = H0_prior_scale
+        ) -
+          rnorm(
+            n = 4e4 * ncol(mat1),
+            mean = 0,
+            sd = H0_prior_scale
+          )
+      ) %>%
+        matrix(., ncol = ncol(mat1))
+      diff_null <-  diff_null_mat %>%
+        apply(., 1, sum)
+      
+      null_lim <- H0_prior_scale * 4 * ncol(mat1)
+    }
+    if (H0_distribution == "uniform") {
+      if (is.null(H0_prior_scale)) {
+        H0_prior_scale <- .01
+      }
+      
+      diff_null_mat <- abs(
+        runif(
+          n = 4e4 * ncol(mat1),
+          min = -H0_prior_scale,
+          max = H0_prior_scale
+        ) -
+          runif(
+            n = 4e4 * ncol(mat1),
+            min = -H0_prior_scale,
+            max = H0_prior_scale
+          )
+      ) %>%
+        matrix(., ncol = ncol(mat1))
+      diff_null <-  diff_null_mat %>%
+        apply(., 1, sum)
+      
+      null_lim <- H0_prior_scale * 2 * ncol(mat1)
+    }
+    if (H0_distribution == "posterior_uncertainty") {
+      # sample rows from posterior iterations
+      rows1_null <-
+        sample(1:nrow(mat1),
+               size = nrow(mat1),
+               replace = FALSE)
+      
+      # assemble new posterior draws_matrices
+      mat1_null <-
+        purrr::map(
+          .x = rows1_null,
+          .f = function(.x) {
+            mat1[.x,]
+          }
+        ) %>%
+        do.call(rbind, .)
+      # compute differences between matrices
+      diff_null <- abs(mat1 - mat1_null) %>%
+        apply(., 1, sum)
+      # HDI for Null distribution, CI_high will be used as upper ROPE limit
+      null_lim <- bayestestR::hdi(diff_null, ci = .99)$CI_high
+    }
+    
+    post_in_rope <-
+      diff_post[diff_post < null_lim] %>%
+      length() / length(diff_post) * 100
+    
+    prior_in_rope <-
+      diff_post[diff_prior < null_lim] %>%
+      length() / length(diff_prior) * 100
+    
+    ### Compute BF for H0
+    # univariate
+    mean_post_u <- mean(diff_post)
+    sd_post_u <- sd(diff_post)
+    mean_prior_u <- mean(diff_prior)
+    sd_prior_u <- sd(diff_prior)
+    
+    BF_01 <- exp(
+      pnorm(
+        null_lim,
+        mean_post_u,
+        sd_post_u,
+        log.p = TRUE,
+        lower.tail = TRUE
+      ) -
+        pnorm(
+          null_lim,
+          mean_prior_u,
+          sd_prior_u,
+          log.p = TRUE,
+          lower.tail = TRUE
+        )
+    )
+    log_BF_01 <- log(BF_01)
+    
+    # plot prior vs. posterior
+    if (isTRUE(plot)) {
+      # combine diff_post and diff_prior in a single column of a dataframe
+      # with another column as an indicator if it is a posterior or prior
+      # distribution
+      if (is.null(plot_xlim)) {
+        plot_xlim <- max(median(diff_prior),
+                         median(diff_post),
+                         median(diff_null))
+
+      }
+      if (is.null(plot_ylim)) {
+        plot_ylim <- max(max(density.default(diff_post)[["y"]]),
+                         max(density.default(diff_prior)[["y"]])) * 1.5
+        
+      }
+      df_samples <- data.frame(posterior = diff_post,
+                               prior = diff_prior) %>%
+        tidyr::pivot_longer(
+          cols = c(posterior, prior),
+          names_to = "distribution",
+          values_to = "value"
+        ) #%>%
+        # rbind(data.frame(distribution = "null",
+        #                  value = diff_null))
+      
+      plot <- df_samples %>%
+        ggplot2::ggplot() +
+        ggplot2::geom_density(aes(value, fill = distribution),
+                              alpha = .5) +
+        ggplot2::annotate(
+          'rect',
+          xmin = 0,
+          xmax = null_lim,
+          ymin = 0,
+          ymax = plot_ylim,
+          alpha = .4,
+          fill = 'grey'
+        ) +
+        ggplot2::geom_vline(xintercept = null_lim) +
+        ggplot2::scale_x_continuous(limits = c(0, plot_xlim),
+                                    expand = expansion()) +
+        ggplot2::scale_y_continuous(limits = c(0, plot_ylim),
+                                    expand = expansion()) +
+        ggplot2::labs(x = "Difference", y = "Density") +
+        ggplot2::theme_light() +
+        ggplot2::theme(panel.grid = element_blank())
+      
+      print(plot)
+    }
+    
+    # df with log_BF and overlap coef
+    df_results <- data.frame(
+      round(BF_01, 4),
+      round(log_BF_01, 2),
+      round(post_in_rope, 2),
+      round(prior_in_rope, 2),
+      row.names = NULL
+    )
+    names(df_results) <-
+      c("BF_01",
+        "log BF_01",
+        "% posterior < null CI_high",
+        "% prior < null CI_high")
+    
+    print(df_results)
+    
+    # return list with results silently
+    return(invisible(
+      list(
+        BF_01 = BF_01,
+        log_BF_01 = log_BF_01,
+        post_below_null_ub = post_in_rope,
+        prior_below_null_ub = prior_in_rope
+      )
+    ))
+    
+    # clean up
+    rm(mat1,
+       mat2,
+       diff_post,
+       diff_post_mat,
+       diff_prior,
+       diff_prior_mat,
+       diff_null)
+  }
 
 
 # -------------------------------------------------------------------------

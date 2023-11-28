@@ -116,406 +116,137 @@ beta_post_3 <-
   rstan::extract(net_3_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
 beta_post_4 <-
   rstan::extract(net_4_fit, "Beta", permuted = FALSE) %>% as_draws_matrix()
+
+rho_post_1a <-
+  rstan::extract(net_1a_fit, "Rho", permuted = FALSE) %>% as_draws_matrix() 
+rho_post_1b <-
+  rstan::extract(net_1b_fit, "Rho", permuted = FALSE) %>% as_draws_matrix() 
+rho_post_2 <-
+  rstan::extract(net_2_fit, "Rho", permuted = FALSE) %>% as_draws_matrix()
+rho_post_3 <-
+  rstan::extract(net_3_fit, "Rho", permuted = FALSE) %>% as_draws_matrix()
+rho_post_4 <-
+  rstan::extract(net_4_fit, "Rho", permuted = FALSE) %>% as_draws_matrix()
 ```
 
-### Function for comparison
 ```{r}
-compare_mat_Beta <-
-  function(mat1,
-           mat2,
-           # number of bootstrap samples
-           bootstrap_samples = 0,
-           # must be a list containing 2 matrices
-           H1_custom_priors = NULL,
-           # normal SD
-           H1_prior_scale = 0.5,
-           # "normal" = SD, "uniform" = range / 2
-           H0_prior_scale = NULL,
-           # c("normal", "uniform", "posterior_uncertainty")
-           H0_distribution = "uniform",
-           # plot densities for null, posterior, and prior
-           plot = TRUE,
-           # upper limit of the x-axis
-           plot_xlim = NULL,
-           # upper limit of the y-axis
-           plot_ylim = NA 
-           ) {
-           #### with bootstrapping ###
-           if (bootstrap_samples > 0) {
-             # sample rows from posterior iterations
-             rows1 <-
-               sample(1:nrow(mat1),
-                      size = bootstrap_samples,
-                      replace = TRUE)
-             rows2 <-
-               sample(1:nrow(mat2),
-                      size = bootstrap_samples,
-                      replace = TRUE)
-             # assemble new posterior draws_matrices
-             mat1 <-
-               purrr::map(
-                 .x = rows1,
-                 .f = function(.x) {
-                   mat1[.x,]
-                 }
-               ) %>%
-               do.call(rbind, .)
-             mat2 <-
-               purrr::map(
-                 .x = rows2,
-                 .f = function(.x) {
-                   mat2[.x, ]
-                 }
-               ) %>%
-               do.call(rbind, .)
-             # compute differences between matrices
-             diff_post_mat <- abs(mat1 - mat2) 
-             diff_post <- diff_post_mat %>%
-               apply(., 1, sum)
-             
-             
-             ### compute prior difference matrices
-             
-             # use custom priors if exist
-             if (typeof(H1_custom_priors) == "list" &
-                 length(H1_custom_priors) == 2) {
-               loc <- H1_custom_priors[[1]] %>% as.vector()
-               scale <- H1_custom_priors[[2]] %>% as.vector()
-               diff_prior <- abs(
-                 lapply(1:length(loc), function(n) {
-                   rnorm(n = bootstrap_samples,
-                         mean = loc[n],
-                         sd = scale[n])
-                 }) %>%
-                   do.call(cbind, .) -
-                   lapply(1:length(loc), function(n) {
-                     rnorm(n = bootstrap_samples,
-                           mean = loc[n],
-                           sd = scale[n])
-                   }) %>%
-                   do.call(cbind, .)
-               ) %>%
-                 matrix(., ncol = ncol(mat1)) %>%
-                 apply(., 1, sum)
-               
-             } else{
-               # use default priors
-               diff_prior_mat <-
-                 abs(
-                   rnorm(
-                     n = bootstrap_samples * ncol(mat1),
-                     mean = 0,
-                     sd = H1_prior_scale
-                   ) -
-                     rnorm(
-                       n = bootstrap_samples * ncol(mat1),
-                       mean = 0,
-                       sd = H1_prior_scale
-                     )
-                 ) %>%
-                 matrix(., ncol = ncol(mat1)) 
-               diff_prior <- diff_prior_mat %>% 
-                 apply(., 1, sum)
-             }
-           } else{
-             ### NO bootstrappping ###
-             
-             diff_post_mat <- mat1 - mat2
-             attr(diff_post_mat, which = "class") <- "matrix"
-             
-             diff_post_mat <- abs(diff_post_mat)
-             
-             diff_post <- diff_post_mat %>%
-               apply(., 1, sum)
-             
-             # prior difference matrices
-             if (typeof(H1_custom_priors) == "list" &
-                 length(H1_custom_priors) == 2) {
-               loc <- H1_custom_priors[[1]] %>% as.vector()
-               scale <- H1_custom_priors[[2]] %>% as.vector()
-               
-               diff_prior_mat <- abs(
-                 lapply(1:length(loc), function(n) {
-                   rnorm(n = 4e4,
-                         mean = loc[n],
-                         sd = scale[n])
-                 }) %>%
-                   do.call(cbind, .) -
-                   lapply(1:length(loc), function(n) {
-                     rnorm(n = 4e4,
-                           mean = loc[n],
-                           sd = scale[n])
-                   }) %>%
-                   do.call(cbind, .)
-               ) %>%
-                 matrix(., ncol = ncol(mat1))
-                 diff_prior <- diff_prior_mat %>% 
-                 apply(., 1, sum)
-               # use default priors
-             } else{
-               diff_prior_mat <- abs(
-                 rnorm(
-                   n = 4e4 * ncol(mat1),
-                   mean = 0,
-                   sd = H1_prior_scale
-                 ) -
-                   rnorm(
-                     n = 4e4 * ncol(mat1),
-                     mean = 0,
-                     sd = H1_prior_scale
-                   )
-               ) %>%
-                 matrix(., ncol = ncol(mat1))
-               diff_prior <- diff_prior_mat %>% 
-                 apply(., 1, sum)
-             }
-           }
-           
-           # distribution for null rope range
-           if (H0_distribution == "normal") {
-             if (is.null(H0_prior_scale)) {
-               H0_prior_scale <- .05
-             }
-             diff_null_mat <- abs(
-               rnorm(
-                 n = 4e4 * ncol(mat1),
-                 mean = 0,
-                 sd = H0_prior_scale
-               ) -
-                 rnorm(
-                   n = 4e4 * ncol(mat1),
-                   mean = 0,
-                   sd = H0_prior_scale
-                 )
-             ) %>%
-               matrix(., ncol = ncol(mat1)) 
-              diff_null <-  diff_null_mat %>%
-               apply(., 1, sum)
-           }
-           if (H0_distribution == "uniform") {
-             if (is.null(H0_prior_scale)) {
-               H0_prior_scale <- .1
-             }
-             
-             diff_null_mat <- abs(
-               runif(
-                 n = 4e4 * ncol(mat1),
-                 min = -H0_prior_scale,
-                 max = H0_prior_scale
-               ) -
-                 runif(
-                   n = 4e4 * ncol(mat1),
-                   min = -H0_prior_scale,
-                   max = H0_prior_scale
-                 )
-             ) %>%
-               matrix(., ncol = ncol(mat1)) 
-              diff_null <-  diff_null_mat %>%
-               apply(., 1, sum)
-           }
-           if (H0_distribution == "posterior_uncertainty") {
-             # sample rows from posterior iterations
-             rows1_null <-
-               sample(1:nrow(mat1),
-                      size = nrow(mat1),
-                      replace = FALSE)
-             
-             # assemble new posterior draws_matrices
-             mat1_null <-
-               purrr::map(
-                 .x = rows1_null,
-                 .f = function(.x) {
-                   mat1[.x, ]
-                 }
-               ) %>%
-               do.call(rbind, .)
-             # compute differences between matrices
-             diff_null <- abs(mat1 - mat1_null) %>%
-               apply(., 1, sum)
-           }
-           # HDI for Null distribution, CI_high will be used as upper ROPE limit
-           null_ci <- bayestestR::hdi(diff_null, ci = .99)
-           
-           post_in_rope <-
-             diff_post[diff_post < max(diff_null)] %>%
-             length() / length(diff_post) * 100
-           
-           prior_in_rope <-
-             diff_post[diff_prior < max(diff_null)] %>%
-             length() / length(diff_prior) * 100
-           
-           # plot prior vs. posterior
-           if (isTRUE(plot)) {
-             # combine diff_post and diff_prior in a single column of a dataframe
-             # with another column as an indicator if it is a posterior or prior
-             # distribution
-             if (is.null(plot_xlim)) {
-               plot_xlim <- max(median(diff_prior),
-                                median(diff_post),
-                                median(diff_null))
-             }
-             df_samples <- data.frame(posterior = diff_post,
-                                      prior = diff_prior) %>%
-               tidyr::pivot_longer(
-                 cols = c(posterior, prior),
-                 names_to = "distribution",
-                 values_to = "value"
-               ) %>%
-               rbind(data.frame(distribution = "null",
-                                value = diff_null))
-             
-             plot <- df_samples %>%
-               ggplot2::ggplot() +
-               ggplot2::geom_density(aes(value, fill = distribution),
-                                     alpha = .5) +
-               ggplot2::geom_vline(xintercept = null_ci$CI_low) +
-               ggplot2::geom_vline(xintercept = null_ci$CI_high) +
-               ggplot2::scale_x_continuous(limits = c(0, plot_xlim),
-                                           expand = expansion()) +
-               ggplot2::scale_y_continuous(limits = c(0, plot_ylim),
-                                           expand = expansion()) +
-               ggplot2::labs(x = "Difference", y = "Density") +
-               ggplot2::theme_light() +
-               ggplot2::theme(panel.grid = element_blank())
-             
-             print(plot)
-           }
-           
-           ### Compute BF for H1
-           # univariate
-           mean_post_u <- mean(diff_post)
-           sd_post_u <- sd(diff_post)
-           mean_prior_u <- mean(diff_prior)
-           sd_prior_u <- sd(diff_prior)
+mat1 <- draws2list(rho_post_1a)
+mat2 <- draws2list(rho_post_1b)
 
-           BF_01_N <- mean(exp(
-             dnorm(diff_null, mean_post_u, sd_post_u, log = TRUE) -
-             dnorm(diff_null, mean_prior_u, sd_prior_u, log = TRUE)))
+mat1 <-
+  purrr::map(mat1, function(x) {
+    DescTools::FisherZ(x) %>%  .[lower.tri(.)] %>% as.vector()
+  })
+mat2 <-
+  purrr::map(mat2, function(x) {
+    DescTools::FisherZ(x) %>% as.vector()
+  })
 
-           
-           mean_post <- apply(diff_post_mat, 2, mean)
-           sd_post <- apply(diff_post_mat, 2, sd)
-           Sigma_post <- diag(sd_post)
-                      
-           mean_prior <- apply(diff_prior_mat, 2, mean)
-           sd_prior <- apply(diff_prior_mat, 2, sd)
-           Sigma_prior <- diag(sd_prior)
-           
-           dens <- sapply(1:nrow(diff_null_mat), function(i) {
-               mvnfast::dmvn(diff_null_mat[i,], mean_post, Sigma_post, log = TRUE) -
-               mvnfast::dmvn(diff_null_mat[i,], mean_prior, Sigma_prior, log = TRUE)
-           }, simplify = TRUE)
-           print(is.na(dens) %>% as.numeric() %>% mean())
-           
-           BF_01_MVN <- mean(exp(dens), na.rm = TRUE)
-
-           
-           
-           
-           
-           # if there is no overlap of posterior and null omit BF
-           if (post_in_rope == 0 & prior_in_rope == 0) {
-             log_BF <- NA
-             overlap_coef_post <- NA
-             overlap_coef_prior <- NA
-           }
-           # if there is an overlap for posterior and null but not for prior and null omit BF
-           if (post_in_rope > 0 & prior_in_rope == 0) {
-             log_BF <- NA
-             overlap_coef_post <- bayestestR::overlap(diff_post, diff_null)
-             overlap_coef_prior <- NA
-           }
-           if (post_in_rope == 0 & prior_in_rope > 0) {
-             log_BF <- NA
-             overlap_coef_post <- NA
-             overlap_coef_prior <- bayestestR::overlap(diff_prior, diff_null)
-           }
-           if (post_in_rope > 0 & prior_in_rope > 0) {
-             # compute BF
-             log_BF <-
-               bayestestR::bf_parameters(
-                 posterior = diff_post,
-                 prior = diff_prior,
-                 null = c(null_ci$CI_low, null_ci$CI_high),
-                 direction = 0
-               ) %>%
-               unlist()
-             
-             overlap_coef_post <- bayestestR::overlap(diff_post, diff_null)
-             overlap_coef_prior <- bayestestR::overlap(diff_prior, diff_null)
-           }
-           # df with log_BF and overlap coef
-           df_results <- data.frame(
-             round(BF_01_N, 4),
-             round(BF_01_MVN, 4),
-             round(post_in_rope, 2),
-             round(prior_in_rope, 2),
-             row.names = NULL
-           )
-           names(df_results) <-
-             c("BF_01 Normal",
-               "BF_01 MVN",
-               "% posterior < null CI_high",
-               "% prior < null CI_high")
-           
-           print(df_results)
-           
-           # return list with results silently
-           return(invisible(
-             list(
-               BF_01_N = BF_01_N,
-               BF_01_MVN = BF_01_MVN,
-               post_below_null_ub = post_in_rope,
-               prior_below_null_ub = prior_in_rope
-             )
-           ))
-           # clean up
-           rm(mat1, mat2, diff_post, diff_post_mat, diff_prior, diff_prior_mat, diff_null)
-           }
+mat1 <- do.call(rbind, mat1)
+mat2 <- do.call(rbind, mat2)
 ```
 
 ### Compare matrices
+#### Beta
 ```{r}
+source(here("scripts","functions.R"))
 n_boot <- 0
 null_dist <- "uniform"
 prior_scale <- .5
-compare_mat_Beta(
+null_scale <- .01
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
   bootstrap_samples = n_boot,
   H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
   plot = TRUE
 )
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_2,
   bootstrap_samples = n_boot,
   H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
   plot = TRUE
 )
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_3,
   bootstrap_samples = n_boot,
   H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
   plot = TRUE
 )
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_4,
   bootstrap_samples = n_boot,
   H1_prior_scale = prior_scale,
   H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+) 
+```
+
+#### Rho
+```{r}
+source(here("scripts","functions.R"))
+n_boot <- 0
+null_dist <- "uniform"
+prior_scale <- .5
+null_scale <- .01
+param <- "Rho"
+compare_matrices(
+  mat1 = rho_post_1a,
+  mat2 =rho_post_1b,
+  parameter_type = param,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+)
+compare_matrices(
+  mat1 = rho_post_1a,
+  mat2 = rho_post_2,
+  parameter_type = param,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+)
+compare_matrices(
+  mat1 = rho_post_1a,
+  mat2 = rho_post_3,
+  parameter_type = param,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+)
+compare_matrices(
+  mat1 = rho_post_1a,
+  mat2 = rho_post_4,
+  parameter_type = param,
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
   plot = TRUE
 ) 
 ```
 
 ### Compare different Null distributions
 ```{r}
-compare_mat_Beta(
+source(here("scripts","functions.R"))
+
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
   H0_prior_scale = .1, 
@@ -523,9 +254,9 @@ compare_mat_Beta(
   bootstrap_samples = 4e4,
   plot = TRUE,
   plot_xlim = 20, 
-  plot_ylim = 4
+  plot_ylim = 2
 )
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
   H0_prior_scale = .05, 
@@ -533,22 +264,24 @@ compare_mat_Beta(
   bootstrap_samples = 4e4,
   plot = TRUE,
   plot_xlim = 20, 
-  plot_ylim = 4
+  plot_ylim = 2
 )
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b, 
   H0_distribution = "posterior_uncertainty",
   bootstrap_samples = 4e4,
   plot = TRUE,
   plot_xlim = 20, 
-  plot_ylim = 4
+  plot_ylim = 2
 )
 ```
 
 ### Use custom priors
 Instead of a centered prior with a fixed scale we can specify custom priors as a list of two matrices each containing the means and standard deviations for the normal priors on the single parameters in the parameter matrix.
 ```{r}
+source(here("scripts","functions.R"))
+
 n_boot <- 4e4
 null_dist <- "posterior_uncertainty"
 # initialize prior matrices
@@ -563,7 +296,7 @@ custom_prior[[2]][3,] <- .1
 custom_prior[[2]][5,] <- .1
 custom_prior[[2]][6,] <- .01
 
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_1b,
   bootstrap_samples = n_boot,
@@ -571,7 +304,7 @@ compare_mat_Beta(
   H0_distribution = null_dist,
   plot = TRUE
 )
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_2,
   bootstrap_samples = n_boot,
@@ -579,7 +312,7 @@ compare_mat_Beta(
   H0_distribution = null_dist,
   plot = TRUE
 )
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_3,
   bootstrap_samples = n_boot,
@@ -587,7 +320,7 @@ compare_mat_Beta(
   H0_distribution = null_dist,
   plot = TRUE
 ) 
-compare_mat_Beta(
+compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_4,
   bootstrap_samples = n_boot,
@@ -601,20 +334,19 @@ compare_mat_Beta(
 n <- 30
 log_BFs <- rep(NA, n)
 for (i in 1:n) {
-  list <- compare_mat_Beta(
+  list <- compare_matrices(
   mat1 = beta_post_1a,
   mat2 = beta_post_3,
   bootstrap_samples = n_boot,
-  H1_custom_priors = custom_prior,
   H0_distribution = "uniform",
   plot = FALSE)
   
-  log_BFs[i] <- list[[4]] - list[[6]]
+  log_BFs[i] <- list[[1]] - list[[2]]
 }
 ```
 
 ```{r}
-hist(exp(log_BFs),breaks = 30)
+hist(log(log_BFs),breaks = 30)
 range(exp(log_BFs))
 sd(log_BFs)
 ```
