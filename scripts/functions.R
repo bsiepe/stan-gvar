@@ -521,28 +521,35 @@ compare_matrices <-
       length() / length(diff_prior) * 100
     
     ### Compute BF for H0
-    mean_post_u <- mean(diff_post)
-    sd_post_u <- sd(diff_post)
-    mean_prior_u <- mean(diff_prior)
-    sd_prior_u <- sd(diff_prior)
+    prec <- 100 # precision for mpfr (floating point)
     
-    BF_01 <- exp(
-      pnorm(
-        null_lim,
+    mean_post_u <- Rmpfr::mpfr(mean(diff_post),precBits = prec)
+    sd_post_u <- Rmpfr::mpfr(sd(diff_post),precBits = prec)
+    mean_prior_u <- Rmpfr::mpfr(mean(diff_prior),precBits = prec)
+    sd_prior_u <- Rmpfr::mpfr(sd(diff_prior),precBits = prec)
+    
+    q <- Rmpfr::mpfr(null_lim,precBits = prec)
+    .mpfr_erange_set(value = (1-2^-52)*.mpfr_erange(c("min.emin","max.emax")))
+    
+    log_BF_01 <- 
+      Rmpfr::pnorm(
+        q,
         mean_post_u,
         sd_post_u,
         log.p = TRUE,
         lower.tail = TRUE
-      ) -
-        pnorm(
-          null_lim,
-          mean_prior_u,
-          sd_prior_u,
-          log.p = TRUE,
-          lower.tail = TRUE
-        )
-    )
-    log_BF_01 <- log(BF_01)
+        ) -
+      Rmpfr::pnorm(
+        q,
+        mean_prior_u,
+        sd_prior_u,
+        log.p = TRUE,
+        lower.tail = TRUE
+      )
+    
+    #log_BF_01 <- (log_BF_01_mpfr)
+    
+    BF_01 <- (exp(log_BF_01))
     
     # plot prior vs. posterior
     if (isTRUE(plot)) {

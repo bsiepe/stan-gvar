@@ -23,13 +23,13 @@ source(here::here("scripts","functions.R"))
 ```{r}
 ## Variable Objects
 # Number of timepoints
-tp <- 400
+tp <- c(100, 200, 400)
 
 # Amount of change between DGP
 change <- c("true", "const05", "const15")
 
 # scale for null range
-null_scale <- c(.005, .01, .05, .1)
+null_scale <- c(.005, .01, .05)
 
 df_design <- createDesign(
   tp = tp,
@@ -210,8 +210,8 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 
 ```{r}
 res <- runSimulation(design = df_design, 
-                     packages = c("tidyverse", "here"),
-                     replications = 100, 
+                     packages = c("tidyverse", "here", "Rmpfr"),
+                     replications = 5, 
                      generate = sim_generate, 
                      analyse = sim_analyse, 
                      summarise = sim_summarise, 
@@ -222,18 +222,43 @@ res <- runSimulation(design = df_design,
                      parallel = TRUE)
 
 res_df <- SimExtract(res, what = 'results')
-
-```
-
-```{r}
 res_df
+
 ```
 
 ```{r}
-res_df%>%
-  ggplot2::ggplot() +
-  geom_boxplot(aes(y = mean(log_bf_beta))) +
-  facet_grid(change ~ null_scale)
+Rmpfr::pnorm()
+library(ggdist)
+res_df %>%
+  ggplot2::ggplot(aes(x = factor(tp), 
+                      y = log_bf_beta,
+                      fill = factor(tp))) +
+
+  # add half-violin from {ggdist} package
+  stat_halfeye(
+    # adjust bandwidth
+    adjust = 0.5,
+    # move to the right
+    justification = -0.2,
+    # remove the slub interval
+    .width = 0,
+    point_colour = NA
+  ) +
+  geom_boxplot(
+    width = 0.12,
+    # removing outliers
+    outlier.color = NA,
+    alpha = 0.5
+  ) +
+  # stat_dots(
+  #   # ploting on left side
+  #   side = "left",
+  #   # adjusting position
+  #   justification = 1.1,
+  #   # adjust grouping (binning) of observations
+  #   binwidth = 0.25
+  # ) +
+  facet_grid(change ~ null_scale, space = "free_y")
 
 ```
 
