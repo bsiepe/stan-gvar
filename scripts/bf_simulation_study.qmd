@@ -217,6 +217,7 @@ res <- runSimulation(design = df_design,
                      summarise = sim_summarise, 
                      fixed_objects = sim_pars,
                      store_results = TRUE,
+                     filename = here("output/bf-sim-results.rds"),
                      save_seeds = FALSE,
                      parallel = TRUE)
 
