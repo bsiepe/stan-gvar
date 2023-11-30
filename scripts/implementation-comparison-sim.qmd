@@ -23,15 +23,15 @@ library(SimDesign)
 ```{r}
 ## Variable Objects
 # Number of timepoints
-tp <- c(50, 200, 500)
+tp <- c(50, 200, 400)
 # For testing
 # tp <- 200
 
 # Amount of change between DGP
-# dgp <- c("graph3", "graph4", "graph5")
+dgp <- c("graph3", "graph4", "graph5")
 
 # For testing
-dgp <- "graph4"
+# dgp <- "graph4"
 
 
 df_design <- createDesign(tp = tp,
@@ -63,7 +63,7 @@ sim_pars <- list(means = 0,
                  rho_prior = 0.25,
                  beta_prior = 0.5,
                  bggm_iter = 50000,
-                 stan_iter = 500,
+                 stan_iter = 100,
                  mplus_iter = 2000,
                  dist_draws = 10000)   # number of distances computed between matrices
 
@@ -160,9 +160,7 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 ```
 
 ## Summary Function
-
-TODO FIX RHO_DIFF
-
+TODO - fix proper summaries
 ```{r}
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
@@ -181,10 +179,22 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   posterior_summary <- function(sample_arr,
                                 pcor_name = "pcor"){
     iter <- dim(sample_arr)[3]
+
+    # Point estimates
     beta_mean <- apply(sample_arr$beta, c(1, 2), mean)
+    beta_median <- apply(sample_arr$beta, c(1,2), stats::median)
     pcor_mean <- apply(sample_arr[[pcor_name]], c(1, 2), mean)
-    
-    return(list(beta_mean = beta_mean, pcor_mean = pcor_mean))
+    pcor_median <- apply(sample_arr[[pcor_name]], c(1,2), stats::median)
+
+    # HDIs
+    beta_hdi <- apply(sample_arr$beta, c(1, 2), function(x) bayestestR::hdi(x, .95))
+    pcor_hdi <- apply(sample_arr[[pcor_name]], c(1, 2), function(x) bayestestR::hdi(x, .95))
+
+
+    return(list(beta_mean = beta_mean, 
+                pcor_mean = pcor_mean,
+                beta_hdi = beta_hdi, 
+                pcor_hdi = pcor_hdi))
   }
   
   
@@ -243,7 +253,7 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
     pairwise_comp[[i]]$mean_beta_diff_lkj_iw <- summary_iw[[i]]$beta_mean - summary_lkj[[i]]$beta_mean
     pairwise_comp[[i]]$mean_pcor_diff_bggm_iw <- summary_bggm[[i]]$pcor_mean - summary_iw[[i]]$pcor_mean
     pairwise_comp[[i]]$mean_pcor_diff_bggm_lkj <- summary_bggm[[i]]$pcor_mean - summary_lkj[[i]]$pcor_mean
-    pairwise_comp[[i]]$mean_pcor_diff_lkj_iw <- summary_iw[[i]]$pcor_mean - summary_lkj[[i]]$pcor_mea
+    pairwise_comp[[i]]$mean_pcor_diff_lkj_iw <- summary_iw[[i]]$pcor_mean - summary_lkj[[i]]$pcor_mean
     
   }
   
@@ -254,20 +264,20 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   mat_bias <- function(x){sum(abs(x))} # sum of absolute values of differences
   mat_mse <- function(x){sum(x^2)} # sum of squared differences
   
-  bias_beta_bggm <- lapply(comp_bggm, function(x){mat_bias(x$beta_diff)})
-  bias_beta_iw <- lapply(comp_iw, function(x){mat_bias(x$beta_diff)})
-  bias_beta_lkj <- lapply(comp_lkj, function(x){mat_bias(x$beta_diff)})
-  mse_beta_bggm <- lapply(comp_bggm, function(x){mat_mse(x$beta_diff)})
-  mse_beta_iw <- lapply(comp_iw, function(x){mat_mse(x$beta_diff)})
-  mse_beta_lkj <- lapply(comp_lkj, function(x){mat_mse(x$beta_diff)})
+  bias_beta_bggm <- mean(sapply(comp_bggm, function(x){mat_bias(x$beta_diff)}))
+  bias_beta_iw <- mean(sapply(comp_iw, function(x){mat_bias(x$beta_diff)}))
+  bias_beta_lkj <- mean(sapply(comp_lkj, function(x){mat_bias(x$beta_diff)}))
+  mse_beta_bggm <- mean(sapply(comp_bggm, function(x){mat_mse(x$beta_diff)}))
+  mse_beta_iw <- mean(sapply(comp_iw, function(x){mat_mse(x$beta_diff)}))
+  mse_beta_lkj <- mean(sapply(comp_lkj, function(x){mat_mse(x$beta_diff)}))
   
   
-  bias_pcor_bggm <- lapply(comp_bggm, function(x){mat_bias(x$rho_diff)})
-  bias_pcor_iw <- lapply(comp_iw, function(x){mat_bias(x$rho_diff)})
-  bias_pcor_lkj <- lapply(comp_lkj, function(x){mat_bias(x$rho_diff)})
-  mse_pcor_bggm <- lapply(comp_bggm, function(x){mat_mse(x$rho_diff)})
-  mse_pcor_iw <- lapply(comp_iw, function(x){mat_mse(x$rho_diff)})
-  mse_pcor_lkj <- lapply(comp_lkj, function(x){mat_mse(x$rho_diff)})
+  bias_pcor_bggm <- mean(sapply(comp_bggm, function(x){mat_bias(x$rho_diff)}))
+  bias_pcor_iw <- mean(sapply(comp_iw, function(x){mat_bias(x$rho_diff)}))
+  bias_pcor_lkj <- mean(sapply(comp_lkj, function(x){mat_bias(x$rho_diff)}))
+  mse_pcor_bggm <- mean(sapply(comp_bggm, function(x){mat_mse(x$rho_diff)}))
+  mse_pcor_iw <- mean(sapply(comp_iw, function(x){mat_mse(x$rho_diff)}))
+  mse_pcor_lkj <- mean(sapply(comp_lkj, function(x){mat_mse(x$rho_diff)}))
   
   
   # Comparisons between methods
@@ -276,6 +286,9 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   sapply(x, function(y) mean(abs(y), na.rm = TRUE))
   })
   
+  # Convert to matrix for means
+  pmad <- t(simplify2array(pairwise_mean_abs_diff))
+  pmad_mean <- colMeans(pmad)
   
   
   #--- Return all results
@@ -291,7 +304,7 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
                      mse_pcor_bggm = mse_pcor_bggm,
                      mse_pcor_iw = mse_pcor_iw,
                      mse_pcor_lkj = mse_pcor_lkj,
-                     pairwise_mean_abs_diff = unlist(pairwise_mean_abs_diff))
+                     pmad = pmad_mean)
   
   return(ret_summarise)
 }
@@ -304,29 +317,25 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 
 ```{r}
 sim_results <- SimDesign::runSimulation(design = df_design, 
-                                    replications = 2, 
+                                    replications = 100, 
                                     generate = sim_generate, 
                                     analyse = sim_analyse, 
                                     summarise = sim_summarise, 
                                     fixed_objects = sim_pars,
                                     parallel = TRUE,
-                                    packages = c("tidyverse", "BGGM", "graphicalVAR", "rstan", "here")
-                                    # debug = "summarise"
-                                    # save_results = TRUE,
-                                    # filename = here("output/implementation-sim-results.rds"),
-                                    # save_seeds = TRUE
+                                    packages = c("tidyverse", "BGGM", "graphicalVAR", "rstan", "here", "bayestestR"),
+                                    save_results = TRUE,
+                                    filename = here("output/implementation-sim-results.rds"),
+                                    save_seeds = TRUE
                                     )
 
-
+SimClean()
 sim_sum <- SimExtract(sim_results, "summarise")
 
 ```
-Extract some numerical results for plotting
-```{r}
-# lapply over the list and extract everything that does not start with "comp"
-sim_sum_num <- lapply(sim_sum, function(x){
-  x[!grepl("^comp", names(x))]
-})
 
+# Visualization
+```{r}
+sim_results 
 
 ```
