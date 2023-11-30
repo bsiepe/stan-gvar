@@ -282,7 +282,6 @@ fisher_z_inv <- function(z) {
 
 
 
-
 compare_matrices <-
   function(mat1,
            mat2,
@@ -304,6 +303,7 @@ compare_matrices <-
            plot_xlim = NULL,
            # upper limit of the y-axis
            plot_ylim = NULL) {
+    
     # fisher z-transform partial correlations
     if (parameter_type == "Rho") {
       mat1 <- draws_matrix2list(mat1)
@@ -379,6 +379,9 @@ compare_matrices <-
         ) %>%
           matrix(., ncol = ncol(mat1)) %>%
           apply(., 1, sum)
+        
+        # TODO need potential warning message if priors are not
+        # NULL but do not satisfy correct format
         
       } else{
         # use default priors
@@ -474,6 +477,7 @@ compare_matrices <-
       diff_null <-  diff_null_mat %>%
         apply(., 1, sum)
       
+      # TODO What does this do?
       null_lim <- H0_prior_scale * 4 * ncol(mat1)
     }
     if (H0_distribution == "uniform") {
@@ -497,6 +501,7 @@ compare_matrices <-
       diff_null <-  diff_null_mat %>%
         apply(., 1, sum)
       
+      # TODO What does this do?
       null_lim <- H0_prior_scale * 2 * ncol(mat1)
     }
     if (H0_distribution == "posterior_uncertainty") {
