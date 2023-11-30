@@ -99,7 +99,7 @@ log_lik_gVAR <- function(Y, draws_beta, draws_sigma, n_cores = 1) {
 #------------------------------------------------------------------------------>
 fit_gVAR_stan <-
   function(data,
-           # a vector of beeks wit length of nrow(data)
+           # a vector of beeps with length of nrow(data)
            beep = NULL,
            priors = NULL,
            backend = "rstan",
@@ -272,6 +272,16 @@ loo_gVAR <- function(stan_fit, data, n_cores = 1) {
 #------------------------------------------------------------------------------>
 # Function to Compute the Bayes Factor for a Posterior Difference Matrix
 #------------------------------------------------------------------------------>
+# Helpers
+fisher_z <- function(r) {
+  return(0.5 * log((1 + r) / (1 - r)))
+}
+fisher_z_inv <- function(z) {
+  return((exp(2 * z) - 1) / (exp(2 * z) + 1))
+}
+
+
+
 
 compare_matrices <-
   function(mat1,
@@ -301,11 +311,11 @@ compare_matrices <-
       
       mat1 <-
         purrr::map(mat1, function(x) {
-          DescTools::FisherZ(x) %>% .[lower.tri(.)] %>% as.vector()
+          fisher_z(x) %>% .[lower.tri(.)] %>% as.vector()
         })
       mat2 <-
         purrr::map(mat2, function(x) {
-          DescTools::FisherZ(x) %>% .[lower.tri(.)] %>% as.vector()
+          fisher_z(x) %>% .[lower.tri(.)] %>% as.vector()
         })
       
       mat1 <- do.call(rbind, mat1)
