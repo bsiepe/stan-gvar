@@ -111,6 +111,7 @@ fit_gVAR_stan <-
            iter_warmup = 500,
            n_chains = 4,
            n_cores = 4,
+           server = FALSE,  # temporary option to run code on Linux server
            ...) {
     Y <- data %>% apply(., 2, scale)
     K <- ncol(data)
@@ -145,10 +146,10 @@ fit_gVAR_stan <-
     if (cov_prior == "LKJ") {
       if (isTRUE(rmv_overnight)) {
         # remove overnight effects
-        model_name <- "VAR_lkj_beep"
+        model_name <- "VAR_LKJ_beep"
       } else{
         # standard model
-        model_name <- "VAR_lkj"
+        model_name <- "VAR_LKJ"
       }
     }
     if (cov_prior == "IW") {
@@ -164,8 +165,14 @@ fit_gVAR_stan <-
     
     if (backend == "rstan") {
       # Compile model
-      stan_model <-
-        rstan::stan_model(file = here::here("scripts", paste0(model_name, ".stan")))
+      if(isFALSE(server)){
+        stan_model <-
+          rstan::stan_model(file = here::here("scripts", paste0(model_name, ".stan")))        
+      } else {
+        stan_model <-
+          rstan::stan_model(file = paste0("~/stan-gvar/scripts/", model_name, ".stan"))
+      }
+      
       
       if (method == "sampling") {
         # Run sampler
@@ -199,9 +206,15 @@ fit_gVAR_stan <-
       }
     } else{
       # Compile model
+      if(isFALSE(server)){
       stan_model <-
         cmdstanr::cmdstan_model(stan_file = here::here("scripts", paste0(model_name, ".stan")),
                                 pedantic = TRUE)
+      } else {
+        stan_model <-
+          cmdstanr::cmdstan_model(file = paste0("~/stan-gvar/scripts/", model_name, ".stan"),
+                                  pedantic = TRUE)        
+      }
       if (method == "sampling") {
         # Run sampler
         stan_fit <- stan_model$sample(

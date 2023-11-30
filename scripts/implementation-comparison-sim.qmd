@@ -12,6 +12,7 @@ Here, we investigate the different implementations of the Bayesian gVAR.
 library(BGGM)
 library(tidyverse)
 library(here)
+here::set_here("~/bjoern/stan-gvar.Rproj")
 source(here("scripts/functions.R"))
 library(SimDesign)
 ```
@@ -42,7 +43,7 @@ df_design <- createDesign(tp = tp,
 # that do not vary across conditions
 
 # DGPs
-l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.rds"))
+l_changed_graphs_0305 <- readRDS(here("data/l_changed_graphs_0305.RDS"))
 
 graph3 <- l_changed_graphs_0305[["graph3"]][["truegraph"]]
 graph3$pcor <- -cov2cor(graph3$kappa)
@@ -124,7 +125,8 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     priors = NULL,
     n_cores = 1,
     iter_sampling = stan_iter,
-    method = "sampling"
+    method = "sampling",
+    server = TRUE
   )
   # Convert to array
   stan_arr_lkj <- stan_fit_convert(fit_stan_lkj)
@@ -137,7 +139,8 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     priors = NULL,
     n_cores = 1,
     iter_sampling = stan_iter,
-    method = "sampling"
+    method = "sampling",
+    server = TRUE
   )
   # Convert to array
   stan_arr_iw <- stan_fit_convert(fit_stan_iw)
@@ -160,7 +163,9 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 ```
 
 ## Summary Function
+
 TODO - fix proper summaries
+
 ```{r}
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
@@ -325,7 +330,7 @@ sim_results <- SimDesign::runSimulation(design = df_design,
                                     parallel = TRUE,
                                     packages = c("tidyverse", "BGGM", "graphicalVAR", "rstan", "here", "bayestestR"),
                                     save_results = TRUE,
-                                    filename = here("output/implementation-sim-results.rds"),
+                                    filename = "implementation-sim-results.rds",
                                     save_seeds = TRUE
                                     )
 
@@ -335,6 +340,7 @@ sim_sum <- SimExtract(sim_results, "summarise")
 ```
 
 # Visualization
+
 ```{r}
 sim_results 
 
