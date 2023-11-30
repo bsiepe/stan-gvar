@@ -474,21 +474,21 @@ compare_matrices <-
       if (is.null(H0_prior_scale)) {
         H0_prior_scale <- .005
       }
-      diff_null_mat <- abs(
-        rnorm(
-          n = 4e4 * ncol(mat1),
-          mean = 0,
-          sd = H0_prior_scale
-        ) -
-          rnorm(
-            n = 4e4 * ncol(mat1),
-            mean = 0,
-            sd = H0_prior_scale
-          )
-      ) %>%
-        matrix(., ncol = ncol(mat1))
-      diff_null <-  diff_null_mat %>%
-        apply(., 1, sum)
+      # diff_null_mat <- abs(
+      #   rnorm(
+      #     n = 4e4 * ncol(mat1),
+      #     mean = 0,
+      #     sd = H0_prior_scale
+      #   ) -
+      #     rnorm(
+      #       n = 4e4 * ncol(mat1),
+      #       mean = 0,
+      #       sd = H0_prior_scale
+      #     )
+      # ) %>%
+      #   matrix(., ncol = ncol(mat1))
+      # diff_null <-  diff_null_mat %>%
+      #   apply(., 1, sum)
       
       # TODO What does this do?
       null_lim <- H0_prior_scale * 4 * ncol(mat1)
@@ -498,21 +498,21 @@ compare_matrices <-
         H0_prior_scale <- .01
       }
       
-      diff_null_mat <- abs(
-        runif(
-          n = 4e4 * ncol(mat1),
-          min = -H0_prior_scale,
-          max = H0_prior_scale
-        ) -
-          runif(
-            n = 4e4 * ncol(mat1),
-            min = -H0_prior_scale,
-            max = H0_prior_scale
-          )
-      ) %>%
-        matrix(., ncol = ncol(mat1))
-      diff_null <-  diff_null_mat %>%
-        apply(., 1, sum)
+      # diff_null_mat <- abs(
+      #   runif(
+      #     n = 4e4 * ncol(mat1),
+      #     min = -H0_prior_scale,
+      #     max = H0_prior_scale
+      #   ) -
+      #     runif(
+      #       n = 4e4 * ncol(mat1),
+      #       min = -H0_prior_scale,
+      #       max = H0_prior_scale
+      #     )
+      # ) %>%
+      #   matrix(., ncol = ncol(mat1))
+      # diff_null <-  diff_null_mat %>%
+      #   apply(., 1, sum)
       
       # TODO What does this do?
       null_lim <- H0_prior_scale * 2 * ncol(mat1)
@@ -586,8 +586,8 @@ compare_matrices <-
       # distribution
       if (is.null(plot_xlim)) {
         plot_xlim <- max(median(diff_prior),
-                         median(diff_post),
-                         median(diff_null))
+                         median(diff_post))#,
+                         #median(diff_null))
         
       }
       if (is.null(plot_ylim)) {
@@ -632,8 +632,8 @@ compare_matrices <-
     
     # df with log_BF and overlap coef
     df_results <- data.frame(
-      round(BF_01, 4),
-      round(log_BF_01, 2),
+      round(Rmpfr::asNumeric(BF_01), 4),
+      round(Rmpfr::asNumeric(log_BF_01), 2),
       round(post_in_rope, 2),
       round(prior_in_rope, 2),
       row.names = NULL
