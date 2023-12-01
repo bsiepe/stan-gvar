@@ -26,10 +26,13 @@ draws_matrix2array <- function(draws_matrix) {
 }
 
 # Helper function to transform draws array into a draws matrix
-draws_array2matrix <- function(array_3d) {
+# additionally deletes warmup samples specified manually
+# or identified from BGGM object
+draws_array2matrix <- function(array_3d,
+                               warmup = 50) { # set to zero to keep everything
   iterations_list <-
     lapply(
-      X = 1:dim(array_3d)[3],
+      X = (warmup+1):dim(array_3d)[3],
       FUN = function(X) {
         as.vector(array_3d[, , X])
       }
@@ -434,13 +437,13 @@ compare_matrices <-
         
         diff_prior_mat <- abs(
           lapply(1:length(loc), function(n) {
-            rnorm(n = 4e4,
+            rnorm(n = max(4e4, dim(mat1)[1]),
                   mean = loc[n],
                   sd = scale[n])
           }) %>%
             do.call(cbind, .) -
             lapply(1:length(loc), function(n) {
-              rnorm(n = 4e4,
+              rnorm(n = max(4e4, dim(mat1)[1]),
                     mean = loc[n],
                     sd = scale[n])
             }) %>%
@@ -453,12 +456,12 @@ compare_matrices <-
       } else{
         diff_prior_mat <- abs(
           rnorm(
-            n = 4e4 * ncol(mat1),
+            n = max(4e4, dim(mat1)[1]) * ncol(mat1),
             mean = 0,
             sd = H1_prior_scale
           ) -
             rnorm(
-              n = 4e4 * ncol(mat1),
+              n = max(4e4, dim(mat1)[1]) * ncol(mat1),
               mean = 0,
               sd = H1_prior_scale
             )
@@ -514,7 +517,7 @@ compare_matrices <-
       # diff_null <-  diff_null_mat %>%
       #   apply(., 1, sum)
       
-      # TODO What does this do?
+      # TODO why twice actually? it is a one-sided test
       null_lim <- H0_prior_scale * 2 * ncol(mat1)
     }
     if (H0_distribution == "posterior_uncertainty") {
@@ -556,6 +559,7 @@ compare_matrices <-
     mean_prior_u <- Rmpfr::mpfr(mean(diff_prior),precBits = prec)
     sd_prior_u <- Rmpfr::mpfr(sd(diff_prior),precBits = prec)
     
+    # TODO needs to be described
     q <- Rmpfr::mpfr(null_lim,precBits = prec)
     .mpfr_erange_set(value = (1-2^-52)*.mpfr_erange(c("min.emin","max.emax")))
     
