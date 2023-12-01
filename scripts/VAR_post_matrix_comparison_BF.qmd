@@ -356,4 +356,97 @@ data.frame(log_BFs = log_BFs, log_BFs_boot = log_BFs_boot) %>%
 
 
 
+# For speed reasons: Use BGGM to fit networks
+```{r}
+bggm_iter <- 50000
+rho_prior <- 0.25
+beta_prior <- 0.1
+
+net_1a_fit <-
+  BGGM::var_estimate(
+    as.data.frame(data_1a),
+    iter = bggm_iter,
+    rho_sd = rho_prior,
+    beta_sd = beta_prior
+  )
+net_1b_fit <-       #throws an error here
+  BGGM::var_estimate(
+    as.data.frame(data_1b),
+    iter = bggm_iter,
+    rho_sd = rho_prior,
+    beta_sd = beta_prior
+  )
+net_2_fit <-
+  BGGM::var_estimate(
+    as.data.frame(data_2),
+    iter = bggm_iter,
+    rho_sd = rho_prior,
+    beta_sd = beta_prior
+  )
+net_3_fit <-
+  BGGM::var_estimate(
+    as.data.frame(data_3),
+    iter = bggm_iter,
+    rho_sd = rho_prior,
+    beta_sd = beta_prior
+  )
+net_4_fit <-
+  BGGM::var_estimate(
+    as.data.frame(data_4),
+    iter = bggm_iter,
+    rho_sd = rho_prior,
+    beta_sd = beta_prior
+  )
+```
+
+## Compare Matrices
+### Beta
+
+```{r}
+source(here("scripts","functions.R"))
+n_boot <- 0
+null_dist <- "uniform"
+prior_scale <- beta_prior
+null_scale <- .01
+
+# 1a vs 1b
+bf1a_1b<- compare_matrices(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_1b_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+)
+bf1a_1b$BF_01
+
+# 1a vs 2
+bf1a_2<- compare_matrices(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_2_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+)
+round(bf1a_2$BF_01,10)
+
+# 1a vs 3
+bf1a_3<- compare_matrices(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_3_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+)
+bf1a_3$BF_01
+
+```
+
+
+
 
