@@ -24,13 +24,13 @@ SimClean()
 ```{r}
 ## Variable Objects
 # Number of timepoints
-tp <- c(200, 400, 800)
+tp <- c(200, 1e3)
 
 # Amount of change between DGP
 change <- c("true", "const05", "const15")
 
 # scale for null range
-null_scale <- c(.025, .05, .1)
+null_scale <- c(.02, .03, .04, .05)
 
 df_design <- createDesign(
   tp = tp,
@@ -210,10 +210,11 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 # Run Simulation
 
 ```{r eval=FALSE}
-cores <- parallel::detectCores()-4
+cores <- parallel::detectCores() - 4
+
 res <- runSimulation(design = df_design, 
                      packages = c("tidyverse", "here", "Rmpfr"),
-                     replications = cores * 5, 
+                     replications = 500, 
                      ncores = cores,
                      generate = sim_generate, 
                      analyse = sim_analyse, 
@@ -224,10 +225,8 @@ res <- runSimulation(design = df_design,
                      parallel = TRUE)
 
 res <- SimExtract(res, what = 'results')
-# save df with results
-
+# save results
 saveRDS(res, here::here("output", "bf_sim_res"))
-
 ```
 
 ```{r}
@@ -236,79 +235,94 @@ res <- readRDS(here::here("output", "bf_sim_res"))
 
 ```{r}
 res <- res %>% mutate(
-  true_diff = ifelse(change == "true", 0, 1),
   is_null = ifelse(change == "true", 1, 0),
-                      detect_diff = ifelse(log_bf_beta > 0 , 0, 1),
-                      correct = ifelse(true_diff == detect_diff, 1, 0),
-                      correct2 = is_null - post_in_null_beta/100) %>% 
-  group_by(null_scale, change) %>% 
-  mutate(perc_correct = mean(correct, na.rm = TRUE),
-         perc_correct2 = mean(correct2, na.rm = TRUE))
-
-res %>% distinct(null_scale,change, perc_correct2)
+  true_diff_beta = ifelse(change == "true", 0, 1),
+  detect_diff_beta = ifelse(log_bf_beta > 0 , 0, 1),
+  correct_beta = ifelse(true_diff_beta == detect_diff_beta, 1, 0),
+  abs_error_beta = abs(is_null - post_in_null_beta / 100),
+  true_diff_rho = ifelse(change == "true", 0, 1),
+  detect_diff_rho = ifelse(log_bf_rho > 0 , 0, 1),
+  correct_rho = ifelse(true_diff_rho == detect_diff_rho, 1, 0),
+  abs_error_rho = abs(is_null - post_in_null_rho / 100)
+) %>%
+  # per null_scale
+  group_by(null_scale, tp) %>%
+  mutate(
+    sens_beta = mean(sum(true_diff_beta * detect_diff_beta) /
+                       sum(true_diff_beta)),
+    spec_beta = mean(sum(is_null * (
+      detect_diff_beta * -1 + 1
+    )) /
+      sum(is_null)),
+    sens_rho = mean(sum(true_diff_rho * detect_diff_rho) /
+                      sum(true_diff_rho)),
+    spec_rho = mean(sum(is_null * (
+      detect_diff_rho * -1 + 1
+    )) /
+      sum(is_null))
+  ) %>%
+  ungroup()
+  
+sens_spec <- 
+res %>% 
+  distinct(tp,null_scale, sens_beta, spec_beta, sens_rho, spec_rho) %>% 
+  arrange(tp) %>% 
+  round(2)
+sens_spec
 ```
 
 ```{r}
 library(ggdist)
 res %>%
   ggplot2::ggplot(aes(x = factor(tp), 
-                      y = -1*log_bf_beta,
-                      fill = factor(tp))) +
-  
-  geom_hline(yintercept = log(100)) +
-
-  # add half-violin from {ggdist} package
-  # stat_halfeye(
-  #   # adjust bandwidth
-  #   #adjust = 0.5,
-  #   # move to the right
-  #   #justification = -0.2,
-  #   # remove the slub interval
-  #   #.width = 0,
-  #   #point_colour = NA
-  # ) +
+                      y = correct2,
+                      fill = factor(tp), 
+                      col = factor(tp))) +
   geom_boxplot(
-    width = 0.2,
-    # removing outliers
-    #outlier.color = NA,
-    alpha = 0.5
+    width = 0.3,
+    alpha = 0.3
   ) +
-  scale_y_continuous(limits = c(-50, 500)) +
-  facet_grid(change ~ null_scale, space = "free_y")
+  labs(title = "Beta",
+       x = "timepoints",
+       y = "absolute error") +
+  scale_y_continuous(limits = c(0,1)) +
+  facet_grid(change ~ null_scale)
 
 ```
 
 ```{r}
 res %>%
-  ggplot2::ggplot(aes(x = factor(tp), 
-                      y = bf_rho,
-                      fill = factor(tp))) +
+  ggplot2::ggplot(aes(
+    x = factor(tp),
+    y = abs_error_rho,
+    fill = factor(tp),
+    col = factor(tp)
+  )) +
+  geom_boxplot(width = 0.3,
+               alpha = 0.3) +
+  labs(title = "Rho",
+       x = "timepoints",
+       y = "absolute error") +
+  scale_y_continuous(limits = c(0,1)) +
+  facet_grid(change ~ null_scale)
+```
 
-  # add half-violin from {ggdist} package
-  stat_halfeye(
-    # adjust bandwidth
-    #adjust = 0.5,
-    # move to the right
-    justification = -0.2,
-    # remove the slub interval
-    .width = 0,
-    point_colour = NA
-  ) +
+```{r}
+breaks <- c(0, .01, .1, 0, 10, 100, 1e6)
+res %>%
+  ggplot2::ggplot(aes(x = factor(tp), 
+                      y = bf_beta,
+                      fill = factor(tp), 
+                      col = factor(tp))) +
   geom_boxplot(
-    width = 0.2,
-    # removing outliers
-    #outlier.color = NA,
-    alpha = 0.5
+    width = 0.3,
+    alpha = 0.3
   ) +
-  # stat_dots(
-  #   # ploting on left side
-  #   side = "left",
-  #   # adjusting position
-  #   justification = 1.1,
-  #   # adjust grouping (binning) of observations
-  #   binwidth = 0.25
-  # ) +
-  facet_grid(change ~ null_scale, space = "free_y")
+  labs(title = "Beta",
+       x = "timepoints",
+       y = "bayes factor") +
+  scale_y_continuous(limits = c(0,NA), breaks = breaks, ) +
+  facet_grid(change ~ null_scale)
 ```
 
 # Analyze Simulation
