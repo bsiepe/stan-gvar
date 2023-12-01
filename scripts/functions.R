@@ -26,10 +26,13 @@ draws_matrix2array <- function(draws_matrix) {
 }
 
 # Helper function to transform draws array into a draws matrix
-draws_array2matrix <- function(array_3d) {
+# additionally deletes warmup samples specified manually
+# or identified from BGGM object
+draws_array2matrix <- function(array_3d,
+                               warmup = 50) { # set to zero to keep everything
   iterations_list <-
     lapply(
-      X = 1:dim(array_3d)[3],
+      X = (warmup+1):dim(array_3d)[3],
       FUN = function(X) {
         as.vector(array_3d[, , X])
       }
