@@ -30,7 +30,7 @@ tp <- c(200, 400, 800)
 change <- c("true", "const05", "const15")
 
 # scale for null range
-null_scale <- c(.005, .01, .05)
+null_scale <- c(.025, .05, .1)
 
 df_design <- createDesign(
   tp = tp,
@@ -169,12 +169,12 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
   #--- Return
   ret_analyse <- data.frame(
     # Beta
-    bf_beta = Rmpfr::asNumeric(mat_comp_beta[[1]]),
-    log_bf_beta = Rmpfr::asNumeric(mat_comp_beta[[2]]),
+    bf_beta = (mat_comp_beta[[1]]),
+    log_bf_beta = (mat_comp_beta[[2]]),
     post_in_null_beta = mat_comp_beta[[3]],
     # Rho
-    bf_rho = Rmpfr::asNumeric(mat_comp_rho[[1]]),
-    log_bf_rho = Rmpfr::asNumeric(mat_comp_rho[[2]]),
+    bf_rho = (mat_comp_rho[[1]]),
+    log_bf_rho = (mat_comp_rho[[2]]),
     post_in_null_rho = mat_comp_rho[[3]]
     )
   
@@ -189,30 +189,32 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
   SimDesign::Attach(fixed_objects)  
-
+ 
   # Compute mean of Bayes Factor
-  bf_mean_beta <- median(results$bf_beta)
-  bf_sd_beta <- mad(results$bf_beta)
-  bf_mean_rho <- median(results$bf_rho)
-  bf_sd_rho <- mad(results$bf_rho)
-  
+  bf_median_beta <- median(results$bf_beta, na.rm = TRUE)
+  bf_mad_beta <- mad(results$bf_beta, na.rm = TRUE)
+  bf_median_rho <- median(results$bf_rho, na.rm = TRUE)
+  bf_mad_rho <- mad(results$bf_rho, na.rm = TRUE)
+
   # Return all results
-  ret_summarise <- data.frame(bf_mean_beta = bf_mean_beta,
-                     bf_sd_beta = bf_sd_beta,
-                     bf_mean_rho = bf_mean_rho,
-                     bf_sd_rho = bf_sd_rho
+  ret_summarise <- data.frame(bf_median_beta = bf_median_beta,
+                     bf_mad_beta = bf_mad_beta,
+                     bf_median_rho = bf_median_rho,
+                     bf_mad_rho = bf_mad_rho
                     )
   
-  return(ret_summarise)
+  return(NULL)
 }
 ```
 
 # Run Simulation
 
-```{r}
+```{r eval=FALSE}
+cores <- parallel::detectCores()-4
 res <- runSimulation(design = df_design, 
                      packages = c("tidyverse", "here", "Rmpfr"),
-                     replications = 500, 
+                     replications = cores * 5, 
+                     ncores = cores,
                      generate = sim_generate, 
                      analyse = sim_analyse, 
                      summarise = sim_summarise, 
@@ -221,17 +223,65 @@ res <- runSimulation(design = df_design,
                      save_seeds = FALSE,
                      parallel = TRUE)
 
-res_df <- SimExtract(res, what = 'results')
+res <- SimExtract(res, what = 'results')
 # save df with results
-saveRDS(res_df, here::here("output", "bf_sim_res_df"))
-head(res_df)
+
+saveRDS(res, here::here("output", "bf_sim_res"))
+
+```
+
+```{r}
+res <- readRDS(here::here("output", "bf_sim_res"))
+```
+
+```{r}
+res <- res %>% mutate(
+  true_diff = ifelse(change == "true", 0, 1),
+  is_null = ifelse(change == "true", 1, 0),
+                      detect_diff = ifelse(log_bf_beta > 0 , 0, 1),
+                      correct = ifelse(true_diff == detect_diff, 1, 0),
+                      correct2 = is_null - post_in_null_beta/100) %>% 
+  group_by(null_scale, change) %>% 
+  mutate(perc_correct = mean(correct, na.rm = TRUE),
+         perc_correct2 = mean(correct2, na.rm = TRUE))
+
+res %>% distinct(null_scale,change, perc_correct2)
 ```
 
 ```{r}
 library(ggdist)
-res_df %>%
+res %>%
   ggplot2::ggplot(aes(x = factor(tp), 
-                      y = log_bf_beta,
+                      y = -1*log_bf_beta,
+                      fill = factor(tp))) +
+  
+  geom_hline(yintercept = log(100)) +
+
+  # add half-violin from {ggdist} package
+  # stat_halfeye(
+  #   # adjust bandwidth
+  #   #adjust = 0.5,
+  #   # move to the right
+  #   #justification = -0.2,
+  #   # remove the slub interval
+  #   #.width = 0,
+  #   #point_colour = NA
+  # ) +
+  geom_boxplot(
+    width = 0.2,
+    # removing outliers
+    #outlier.color = NA,
+    alpha = 0.5
+  ) +
+  scale_y_continuous(limits = c(-50, 500)) +
+  facet_grid(change ~ null_scale, space = "free_y")
+
+```
+
+```{r}
+res %>%
+  ggplot2::ggplot(aes(x = factor(tp), 
+                      y = bf_rho,
                       fill = factor(tp))) +
 
   # add half-violin from {ggdist} package
@@ -239,10 +289,10 @@ res_df %>%
     # adjust bandwidth
     #adjust = 0.5,
     # move to the right
-    #justification = -0.2,
+    justification = -0.2,
     # remove the slub interval
-    #.width = 0,
-    #point_colour = NA
+    .width = 0,
+    point_colour = NA
   ) +
   geom_boxplot(
     width = 0.2,
@@ -259,7 +309,6 @@ res_df %>%
   #   binwidth = 0.25
   # ) +
   facet_grid(change ~ null_scale, space = "free_y")
-
 ```
 
 # Analyze Simulation

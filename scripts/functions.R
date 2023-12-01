@@ -560,7 +560,7 @@ compare_matrices <-
     q <- Rmpfr::mpfr(null_lim,precBits = prec)
     .mpfr_erange_set(value = (1-2^-52)*.mpfr_erange(c("min.emin","max.emax")))
     
-    log_BF_01 <- 
+    log_BF_01_mpfr <- 
       Rmpfr::pnorm(
         q,
         mean_post_u,
@@ -575,10 +575,9 @@ compare_matrices <-
         log.p = TRUE,
         lower.tail = TRUE
       )
+    log_BF_01 <- Rmpfr::asNumeric(log_BF_01_mpfr)
+    BF_01 <- Rmpfr::asNumeric(exp(log_BF_01_mpfr))
     
-    #log_BF_01 <- (log_BF_01_mpfr)
-    
-    BF_01 <- (exp(log_BF_01))
     
     # plot prior vs. posterior
     if (isTRUE(plot)) {
@@ -633,8 +632,8 @@ compare_matrices <-
     
     # df with log_BF and overlap coef
     df_results <- data.frame(
-      round(Rmpfr::asNumeric(BF_01), 4),
-      round(Rmpfr::asNumeric(log_BF_01), 2),
+      round(BF_01, 4),
+      round(log_BF_01, 2),
       round(post_in_rope, 2),
       round(prior_in_rope, 2),
       row.names = NULL
