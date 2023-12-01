@@ -24,13 +24,13 @@ SimClean()
 ```{r}
 ## Variable Objects
 # Number of timepoints
-tp <- c(200, 1e3)
+tp <- c(200, 500, 1e3)
 
 # Amount of change between DGP
 change <- c("true", "const05", "const15")
 
 # scale for null range
-null_scale <- c(.02, .03, .04, .05)
+null_scale <- c(.03, .04, .05)
 
 df_design <- createDesign(
   tp = tp,
@@ -210,11 +210,11 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 # Run Simulation
 
 ```{r eval=FALSE}
-cores <- parallel::detectCores() - 4
+cores <- parallel::detectCores() - 2
 
 res <- runSimulation(design = df_design, 
                      packages = c("tidyverse", "here", "Rmpfr"),
-                     replications = 500, 
+                     replications = 1e3, 
                      ncores = cores,
                      generate = sim_generate, 
                      analyse = sim_analyse, 
@@ -232,6 +232,8 @@ saveRDS(res, here::here("output", "bf_sim_res"))
 ```{r}
 res <- readRDS(here::here("output", "bf_sim_res"))
 ```
+
+# Analyze Simulation
 
 ```{r}
 res <- res %>% mutate(
@@ -275,7 +277,7 @@ sens_spec
 library(ggdist)
 res %>%
   ggplot2::ggplot(aes(x = factor(tp), 
-                      y = correct2,
+                      y = abs_error_beta,
                       fill = factor(tp), 
                       col = factor(tp))) +
   geom_boxplot(
@@ -308,12 +310,13 @@ res %>%
 ```
 
 ```{r}
-breaks <- c(0, .01, .1, 0, 10, 100, 1e6)
 res %>%
   ggplot2::ggplot(aes(x = factor(tp), 
-                      y = bf_beta,
+                      y = log_bf_beta,
                       fill = factor(tp), 
                       col = factor(tp))) +
+  geom_hline(yintercept = log(.01)) + 
+  geom_hline(yintercept = log(100)) + 
   geom_boxplot(
     width = 0.3,
     alpha = 0.3
@@ -321,13 +324,25 @@ res %>%
   labs(title = "Beta",
        x = "timepoints",
        y = "bayes factor") +
-  scale_y_continuous(limits = c(0,NA), breaks = breaks, ) +
-  facet_grid(change ~ null_scale)
+  scale_y_continuous() +
+  facet_grid(change ~ null_scale, scales = "free_y")
 ```
 
-# Analyze Simulation
-
 ```{r}
-sim_sum <- SimExtract(res, "summarise")
-sim_sum
+res %>%
+  ggplot2::ggplot(aes(x = factor(tp), 
+                      y = log_bf_rho,
+                      fill = factor(tp), 
+                      col = factor(tp))) +
+  geom_hline(yintercept = log(.01)) + 
+  geom_hline(yintercept = log(100)) + 
+  geom_boxplot(
+    width = 0.3,
+    alpha = 0.3
+  ) +
+  labs(title = "Rho",
+       x = "timepoints",
+       y = "bayes factor") +
+  scale_y_continuous() +
+  facet_grid(change ~ null_scale, scales = "free_y")
 ```
