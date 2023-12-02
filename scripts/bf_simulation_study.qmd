@@ -27,7 +27,7 @@ SimClean()
 tp <- c(75, 200, 1e3)
 
 # Amount of change between DGP
-change <- c("true", "change16", "const05", "const15")
+change <- c("truegraph", "change1.6", "const0.5", "const1.5")
 
 # Which dgp
 dgp_num <- c("graph3", "graph4", "graph5")
@@ -98,7 +98,7 @@ sim_generate <- function(condition, fixed_objects = NULL) {
   # might ideally be better to create completely new network
   # because partial correlation dimension depend on number of variables
   # but we disregard that for now
-  data_dgp_true <- dgp_list[[dgp_num]][["true"]]
+  data_dgp_true <- dgp_list[[dgp_num]][["truegraph"]]
   data_dgp_change <- dgp_list[[dgp_num]][[change]]
   
   # TODO should add check that kappa leads to spd pcor
