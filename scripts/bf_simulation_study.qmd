@@ -24,10 +24,17 @@ SimClean()
 ```{r}
 ## Variable Objects
 # Number of timepoints
-tp <- c(200, 500, 1e3)
+tp <- c(75, 200, 1e3)
 
 # Amount of change between DGP
-change <- c("true", "const05", "const15")
+change <- c("true", "change16", "const05", "const15")
+
+# Which dgp
+dgp_num <- c("graph3", "graph4", "graph5")
+
+# Number of variables
+# cannot increase beyond 6 for the moment
+nvar <- c(4, 6)
 
 # scale for null range
 null_scale <- c(.03, .04, .05)
@@ -35,7 +42,9 @@ null_scale <- c(.03, .04, .05)
 df_design <- createDesign(
   tp = tp,
   change = change,
-  null_scale = null_scale
+  null_scale = null_scale,
+  nvar = nvar,
+  dgp_num = dgp_num
   )
 
 ## Fixed Objects
@@ -45,17 +54,21 @@ df_design <- createDesign(
 # DGPs
 l_changed_graphs_0305 <- readRDS(here::here("data/l_changed_graphs_0305.rds"))
 
-gvar_mod_00 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
-gvar_mod_05 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
-gvar_mod_15 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
-dgp_list <- list("true" = gvar_mod_00,
-                 "const05" = gvar_mod_05,
-                 "const15" = gvar_mod_15)
+
+# gvar_mod_00 <- l_changed_graphs_0305[["graph5"]][["truegraph"]]
+# gvar_mod_c16<- l_changed_graphs_0305[["graph5"]][["change1.6"]]
+# gvar_mod_05 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
+# gvar_mod_15 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
+# dgp_list <- list("true" = gvar_mod_00,
+#                  "change16" = gvar_mod_c16,
+#                  "const05" = gvar_mod_05,
+#                  "const15" = gvar_mod_15)
+
+dgp_list <- l_changed_graphs_0305
 
 # Further simulation parameters
 sim_pars <- list(dgp_list = dgp_list,
                  means = 0,
-                 nvar = 6,
                  rho_prior = 0.25,
                  beta_prior = 0.5,
                  bggm_iter = 1e4
@@ -78,14 +91,26 @@ sim_generate <- function(condition, fixed_objects = NULL) {
   change <- condition$change
   null_scale <- condition$null_scale
   dgp_list = fixed_objects$dgp_list
+  nvar <- condition$nvar
+  dgp_num <- condition$dgp_num
+  
+  # Cut away variables depending on nvar
+  # might ideally be better to create completely new network
+  # because partial correlation dimension depend on number of variables
+  # but we disregard that for now
+  data_dgp_true <- dgp_list[[dgp_num]][["true"]]
+  data_dgp_change <- dgp_list[[dgp_num]][[change]]
+  
+  # TODO should add check that kappa leads to spd pcor
+  
   
   # Simulate dataset under true
   data_true <-
     as.data.frame(
       graphicalVAR::graphicalVARsim(
         nTime = tp,
-        beta = dgp_list[["true"]]$beta,
-        kappa = dgp_list[["true"]]$kappa,
+        beta = data_dgp_true$beta[1:nvar, 1:nvar],
+        kappa = data_dgp_true$kappa[1:nvar, 1:nvar],
         mean = means
       )
     )
@@ -98,8 +123,8 @@ sim_generate <- function(condition, fixed_objects = NULL) {
     as.data.frame(
       graphicalVAR::graphicalVARsim(
         nTime = tp,
-        beta = dgp_list[[change]]$beta,
-        kappa = dgp_list[[change]]$kappa,
+        beta = data_dgp_change$beta[1:nvar, 1:nvar],
+        kappa = data_dgp_change$kappa[1:nvar, 1:nvar],
         mean = means
       )
     )
