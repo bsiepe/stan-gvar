@@ -90,7 +90,7 @@ sim_generate <- function(condition, fixed_objects = NULL) {
   tp <- condition$tp
   change <- condition$change
   null_scale <- condition$null_scale
-  dgp_list = fixed_objects$dgp_list
+  dgp_list <- fixed_objects$dgp_list
   nvar <- condition$nvar
   dgp_num <- condition$dgp_num
   
@@ -247,6 +247,7 @@ res <- runSimulation(design = df_design,
                      fixed_objects = sim_pars,
                      store_results = TRUE,
                      save_seeds = FALSE,
+                     debug = 'all',
                      parallel = TRUE)
 
 res <- SimExtract(res, what = 'results')
