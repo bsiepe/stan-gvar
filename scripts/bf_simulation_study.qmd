@@ -24,16 +24,17 @@ SimClean()
 ```{r}
 ## Variable Objects
 # Number of timepoints
-tp <- c(75, 200, 1e3)
+# tp <- c(75, 200, 1e3)
+tp <- 75
 
 # Amount of change between DGP
-change <- c("truegraph", "change1.6", "const0.5", "const1.5")
+change <- c("truegraph", "change1.6", "const0.05", "const0.15")
 
 # Which dgp
 dgp_num <- c("graph3", "graph4", "graph5")
 
 # Number of variables
-# cannot increase beyond 6 for the moment
+# cannot change from 6 for the moment
 nvar <- c(4, 6)
 
 # scale for null range
@@ -228,7 +229,7 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
                      bf_mad_rho = bf_mad_rho
                     )
   
-  return(NULL)
+  return(ret_summarise)
 }
 ```
 
@@ -239,7 +240,7 @@ cores <- parallel::detectCores() - 2
 
 res <- runSimulation(design = df_design, 
                      packages = c("tidyverse", "here", "Rmpfr"),
-                     replications = 1e3, 
+                     replications = 3, 
                      ncores = cores,
                      generate = sim_generate, 
                      analyse = sim_analyse, 
@@ -247,8 +248,10 @@ res <- runSimulation(design = df_design,
                      fixed_objects = sim_pars,
                      store_results = TRUE,
                      save_seeds = FALSE,
-                     debug = 'all',
+                     # debug = 'all',
                      parallel = TRUE)
+
+SimClean()
 
 res <- SimExtract(res, what = 'results')
 # save results
