@@ -24,8 +24,8 @@ SimClean()
 ```{r}
 ## Variable Objects
 # Number of timepoints
-# tp <- c(75, 200, 1e3)
-tp <- 75
+tp <- c(75, 200, 1e3)
+# tp <- 75
 
 # Amount of change between DGP
 change <- c("truegraph", "change1.6", "const0.05", "const0.15")
@@ -221,12 +221,52 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   bf_mad_beta <- mad(results$bf_beta, na.rm = TRUE)
   bf_median_rho <- median(results$bf_rho, na.rm = TRUE)
   bf_mad_rho <- mad(results$bf_rho, na.rm = TRUE)
+  
+  # Compute mean/median of ROPE
+  rope_median_beta <- median(results$post_in_null_beta, na.rm = TRUE)
+  rope_mad_beta <- mad(results$post_in_null_beta, na.rm = TRUE)
+  rope_median_rho <- median(results$post_in_null_rho, na.rm = TRUE)
+  rope_mad_rho <- mad(results$post_in_null_rho, na.rm = TRUE)
+  
+  # Get change condition
+  true_dgp <- condition$change
+  
+  # Is there a difference?
+  true_diff <- ifelse(true_dgp == "truegraph", 0, 1)
+  true_null <- ifelse(true_dgp == "truegraph", 1, 0)
+  
+  # Dichotomize decisions for BF and ROPE
+  bf_detect_diff_beta = sum(ifelse(results$log_bf_beta > 0 , 0, 1))/length(results$log_bf_beta)
+  bf_detect_diff_rho = sum(ifelse(results$log_bf_rho > 0 , 0, 1))/length(results$log_bf_rho)
+  
+  rope_detect_diff_beta = sum(ifelse(results$post_in_null_beta < 50 , 1, 0))/length(results$post_in_null_beta)
+  rope_detect_diff_rho = sum(ifelse(results$post_in_null_rho < 50 , 1, 0))/length(results$post_in_null_rho)
+  
+  # judge correctness based on true diff/null
+  bf_detect_diff_beta_correct <- true_diff * bf_detect_diff_beta + true_null * (1 - bf_detect_diff_beta)
+  bf_detect_diff_rho_correct <- true_diff * bf_detect_diff_rho + true_null * (1 - bf_detect_diff_rho)
+  rope_detect_diff_beta_correct <- true_diff * rope_detect_diff_beta + true_null * (1 - rope_detect_diff_beta)
+  rope_detect_diff_rho_correct <- true_diff * rope_detect_diff_rho + true_null * (1 - rope_detect_diff_rho)
 
+  
+  
   # Return all results
   ret_summarise <- data.frame(bf_median_beta = bf_median_beta,
                      bf_mad_beta = bf_mad_beta,
                      bf_median_rho = bf_median_rho,
-                     bf_mad_rho = bf_mad_rho
+                     bf_mad_rho = bf_mad_rho,
+                     rope_median_beta = rope_median_beta,
+                     rope_mad_beta = rope_mad_beta,
+                     rope_median_rho = rope_median_rho,
+                     rope_mad_rho = rope_mad_rho,
+                     bf_detect_diff_beta = bf_detect_diff_beta,
+                     bf_detect_diff_rho = bf_detect_diff_rho,
+                     rope_detect_diff_beta = rope_detect_diff_beta,
+                     rope_detect_diff_rho = rope_detect_diff_rho,
+                     bf_detect_diff_beta_correct = bf_detect_diff_beta_correct,
+                     bf_detect_diff_rho_correct = bf_detect_diff_rho_correct,
+                     rope_detect_diff_beta_correct = rope_detect_diff_beta_correct,
+                     rope_detect_diff_rho_correct = rope_detect_diff_rho_correct
                     )
   
   return(ret_summarise)
@@ -238,22 +278,24 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 ```{r eval=FALSE}
 cores <- parallel::detectCores() - 2
 
-res <- runSimulation(design = df_design, 
+
+
+res <- runSimulation(design = df_design_test, 
                      packages = c("tidyverse", "here", "Rmpfr"),
-                     replications = 3, 
+                     replications = 1000, 
                      ncores = cores,
                      generate = sim_generate, 
                      analyse = sim_analyse, 
                      summarise = sim_summarise, 
                      fixed_objects = sim_pars,
-                     store_results = TRUE,
+                     save_results = TRUE,
                      save_seeds = FALSE,
                      # debug = 'all',
                      parallel = TRUE)
 
 SimClean()
 
-res <- SimExtract(res, what = 'results')
+# res <- SimExtract(res, what = 'results')
 # save results
 saveRDS(res, here::here("output", "bf_sim_res.rds"))
 ```
