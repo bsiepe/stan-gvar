@@ -14,6 +14,7 @@ library(tidyverse)
 library(here)
 source(here("scripts/functions.R"))
 library(SimDesign)
+library(ggh4x)
 ```
 
 # Writing simulation functions
@@ -163,13 +164,11 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 
 ## Summary Function
 
-TODO - fix proper summaries
-
 ```{r}
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
   SimDesign::Attach(fixed_objects)  
-  
+  # browser()
   ret <- list()
   
   #--- Obtain condition parameters and DGP
@@ -268,13 +267,47 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   mat_bias <- function(x){sum(abs(x))} # sum of absolute values of differences
   mat_mse <- function(x){sum(x^2)} # sum of squared differences
   
-  bias_beta_bggm <- mean(sapply(comp_bggm, function(x){mat_bias(x$beta_diff)}))
-  bias_beta_iw <- mean(sapply(comp_iw, function(x){mat_bias(x$beta_diff)}))
-  bias_beta_lkj <- mean(sapply(comp_lkj, function(x){mat_bias(x$beta_diff)}))
-  mse_beta_bggm <- mean(sapply(comp_bggm, function(x){mat_mse(x$beta_diff)}))
-  mse_beta_iw <- mean(sapply(comp_iw, function(x){mat_mse(x$beta_diff)}))
-  mse_beta_lkj <- mean(sapply(comp_lkj, function(x){mat_mse(x$beta_diff)}))
   
+  # Calculate MCSEs
+  bias_mcse <- function(x, diff){
+    bias_hat <- sapply(x, function(y){
+      mat_bias(y[[diff]])
+    })
+    bias_var <- var(bias_hat, na.rm = TRUE)
+    bias_mcse <- sqrt(bias_var/length(bias_hat))
+    return(bias_mcse)
+  }
+  mse_mcse <- function(x, diff){
+    mse_hat <- sapply(x, function(y){
+      mat_mse(y[[diff]])
+    })
+    mse_var <- var(mse_hat, na.rm = TRUE)
+    mse_mcse <- sqrt(mse_var/length(mse_hat))
+    return(mse_mcse)
+  }
+  pmad_mcse <- function(x, diff){
+    pmad_hat <- sapply(x, function(y){
+      mat_mse(y[[diff]])
+    })
+    mse_var <- var(mse_hat, na.rm = TRUE)
+    mse_mcse <- sqrt(mse_var/length(mse_hat))
+    return(mse_mcse)
+  }
+  
+  
+  
+  bias_beta_bggm <- mean(sapply(comp_bggm, function(x){mat_bias(x$beta_diff)}))
+  bias.mcse_beta_bggm <- bias_mcse(comp_bggm, diff = "beta_diff")
+  bias_beta_iw <- mean(sapply(comp_iw, function(x){mat_bias(x$beta_diff)}))
+  bias.mcse_beta_iw <- bias_mcse(comp_iw, diff = "beta_diff")
+  bias_beta_lkj <- mean(sapply(comp_lkj, function(x){mat_bias(x$beta_diff)}))
+  bias.mcse_beta_lkj <- bias_mcse(comp_lkj, diff = "beta_diff")
+  mse_beta_bggm <- mean(sapply(comp_bggm, function(x){mat_mse(x$beta_diff)}))
+  mse.mcse_beta_bggm <- mse_mcse(comp_bggm, diff = "beta_diff")
+  mse_beta_iw <- mean(sapply(comp_iw, function(x){mat_mse(x$beta_diff)}))
+  mse.mcse_beta_iw <- mse_mcse(comp_iw, diff = "beta_diff")
+  mse_beta_lkj <- mean(sapply(comp_lkj, function(x){mat_mse(x$beta_diff)}))
+  mse.mcse_beta_lkj <- mse_mcse(comp_lkj, diff = "beta_diff")
   
   bias_pcor_bggm <- mean(sapply(comp_bggm, function(x){mat_bias(x$rho_diff)}))
   bias_pcor_iw <- mean(sapply(comp_iw, function(x){mat_bias(x$rho_diff)}))
@@ -282,6 +315,14 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   mse_pcor_bggm <- mean(sapply(comp_bggm, function(x){mat_mse(x$rho_diff)}))
   mse_pcor_iw <- mean(sapply(comp_iw, function(x){mat_mse(x$rho_diff)}))
   mse_pcor_lkj <- mean(sapply(comp_lkj, function(x){mat_mse(x$rho_diff)}))
+  
+  # calculate mcse
+  bias.mcse_pcor_bggm <- bias_mcse(comp_bggm, diff = "rho_diff")
+  bias.mcse_pcor_iw <- bias_mcse(comp_iw, diff = "rho_diff")
+  bias.mcse_pcor_lkj <- bias_mcse(comp_lkj, diff = "rho_diff")
+  mse.mcse_pcor_bggm <- mse_mcse(comp_bggm, diff = "rho_diff")
+  mse.mcse_pcor_iw <- mse_mcse(comp_iw, diff = "rho_diff")
+  mse.mcse_pcor_lkj <- mse_mcse(comp_lkj, diff = "rho_diff")
   
   
   # Comparisons between methods
@@ -293,22 +334,36 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   # Convert to matrix for means
   pmad <- t(simplify2array(pairwise_mean_abs_diff))
   pmad_mean <- colMeans(pmad)
+  pmad_mean.mcse <- sqrt(apply(pmad, 2, var)/nrow(pmad))
   
   
   #--- Return all results
   ret_summarise <- c(bias_beta_bggm = bias_beta_bggm,
+                     bias.mcse_beta_bggm = bias.mcse_beta_bggm,
                      bias_beta_iw = bias_beta_iw,
+                     bias.mcse_beta_iw = bias.mcse_beta_iw,
                      bias_beta_lkj = bias_beta_lkj,
+                     bias.mcse_beta_lkj = bias.mcse_beta_lkj,
                      mse_beta_bggm = mse_beta_bggm,
+                     mse.mcse_beta_bggm = mse.mcse_beta_bggm,
                      mse_beta_iw = mse_beta_iw,
+                     mse.mcse_beta_iw = mse.mcse_beta_iw,
                      mse_beta_lkj = mse_beta_lkj,
+                     mse.mcse_beta_lkj = mse.mcse_beta_lkj,
                      bias_pcor_bggm = bias_pcor_bggm,
+                     bias.mcse_pcor_bggm = bias.mcse_pcor_bggm,
                      bias_pcor_iw = bias_pcor_iw,
+                     bias.mcse_pcor_iw = bias.mcse_pcor_iw,
                      bias_pcor_lkj = bias_pcor_lkj,
+                     bias.mcse_pcor_lkj = bias.mcse_pcor_lkj,
                      mse_pcor_bggm = mse_pcor_bggm,
+                     mse.mcse_pcor_bggm = mse.mcse_pcor_bggm,
                      mse_pcor_iw = mse_pcor_iw,
+                     mse.mcse_pcor_iw = mse.mcse_pcor_iw,
                      mse_pcor_lkj = mse_pcor_lkj,
-                     pmad = pmad_mean)
+                     mse.mcse_pcor_lkj = mse.mcse_pcor_lkj,
+                     pmad_mean = pmad_mean,
+                     pmad_mean.mcse = pmad_mean.mcse)
   
   return(ret_summarise)
 }
@@ -336,13 +391,48 @@ sim_results <- SimDesign::runSimulation(design = df_design,
 SimClean()
 sim_sum <- SimExtract(sim_results, "summarise")
 
-saveRDS(sim_results, file = here("output/implementation_sim_results.RDS"))
+saveRDS(sim_results, file = here("/output/implementation-sim-results.RDS"))
+sim_results <- readRDS(here("output/implementation-sim-results.RDS"))
+
+
 
 ```
+
+Add the MCSE to the results
+```{r}
+resum_results <- reSummarise(sim_summarise, dir = "~/stan-gvar/scripts/implementation-sim-results.rds-results_pc04669")
+saveRDS(sim_results, file = "~/stan-gvar/output/implementation_sim_results.RDS")
+```
+
+
+
+
+
 
 # Visualization
 
+Organize the data into a longer format for plotting. 
 ```{r}
-sim_results 
+sim_results %>% 
+  # pivot longer where the column endings after the last underscore are the methods
+  pivot_longer(cols = contains(c("bias", "mse", "pmad")), 
+               names_to = "pm", 
+               values_to = "value") %>% 
+  # disregard everything with pmad for now
+  filter(!str_detect(pm, "pmad")) %>%
+  # separate the pm column into the performance measure, matrix, and the method
+  separate(pm, into = c("pm", "mat", "method"), sep = "_") %>% 
+  ggplot(aes(x = tp, y = value, color = method))+
+  geom_point()+
+  ggh4x::facet_nested(dgp ~ pm + mat, scales = "free")+
+  # theme_compare()+
+  ggokabeito::scale_color_okabe_ito()
+  
 
 ```
+
+
+
+
+
+
