@@ -12,7 +12,6 @@ Here, we investigate the different implementations of the Bayesian gVAR.
 library(BGGM)
 library(tidyverse)
 library(here)
-here::set_here("~/bjoern/stan-gvar.Rproj")
 source(here("scripts/functions.R"))
 library(SimDesign)
 ```
@@ -64,8 +63,8 @@ sim_pars <- list(means = 0,
                  rho_prior = 0.25,
                  beta_prior = 0.5,
                  bggm_iter = 50000,
-                 stan_iter = 100,
-                 mplus_iter = 2000,
+                 stan_iter = 500,
+                 # mplus_iter = 2000,
                  dist_draws = 10000)   # number of distances computed between matrices
 
 ```
@@ -330,12 +329,14 @@ sim_results <- SimDesign::runSimulation(design = df_design,
                                     parallel = TRUE,
                                     packages = c("tidyverse", "BGGM", "graphicalVAR", "rstan", "here", "bayestestR"),
                                     save_results = TRUE,
+                                    ncores = 50,
                                     filename = "implementation-sim-results.rds",
-                                    save_seeds = TRUE
+                                    # save_seeds = TRUE,
                                     )
-
 SimClean()
 sim_sum <- SimExtract(sim_results, "summarise")
+
+saveRDS(sim_results, file = here("output/implementation_sim_results.RDS"))
 
 ```
 
