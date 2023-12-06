@@ -947,3 +947,42 @@ convert_mplus_samples <- function(mplus_output_file) {
   ))
 }
 
+
+
+
+
+
+# ggplot theme ------------------------------------------------------------
+theme_compare <- function(){
+  # add google font
+  sysfonts::font_add_google("News Cycle", "news")
+  # use showtext
+  showtext::showtext_auto()
+  # theme
+  ggplot2::theme_minimal(base_family = "news") +
+    ggplot2::theme(
+      # remove minor grid
+      panel.grid.minor = ggplot2::element_blank(),
+      # Title and Axis Texts
+      plot.title = ggplot2::element_text(face = "plain", size = ggplot2::rel(1.2), hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(size = ggplot2::rel(1.1), hjust = 0.5),
+      axis.title = ggplot2::element_text(size = ggplot2::rel(1.15)),
+      axis.text = ggplot2::element_text(size = ggplot2::rel(1.1)),
+      axis.text.x = ggplot2::element_text(margin = ggplot2::margin(5, b = 10)),
+      
+      # Faceting
+      strip.text = ggplot2::element_text(face = "plain", size = ggplot2::rel(1.1), hjust = 0.5),
+      strip.background = ggplot2::element_rect(fill = NA, color = NA),
+      # Grid
+      panel.grid = ggplot2::element_line(colour = "#F3F4F5"),
+      # Legend
+      legend.title = ggplot2::element_text(face = "plain"),
+      legend.position = "top",
+      legend.justification = 1,
+      # Panel/Facets
+      panel.spacing.y = ggplot2::unit(1.5, "lines")
+    )
+}
+
+okabe_fill_enh <- ggokabeito::scale_fill_okabe_ito(order = c(5,1,3,4,2,6,7,8,9))
+okabe_color_enh <- ggokabeito::scale_color_okabe_ito(order = c(5,1,3,4,2,6,7,8,9))
