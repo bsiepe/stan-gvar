@@ -7,10 +7,14 @@ editor: visual
 # Preparation
 
 ```{r}
+library(BGGM)
 library(SimDesign)
 library(tidyverse)
-library(BGGM)
+library(ggh4x)
+library(gt)
+library(gtExtras)
 library(here)
+
 
 source(here::here("scripts","functions.R"))
 SimClean()
@@ -215,9 +219,16 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
 sim_summarise <- function(condition, results, fixed_objects = NULL) {
   
   SimDesign::Attach(fixed_objects)  
+  
+  
+  # Helper to compute mcse of generic summary statistics
+  mcse_gen <- function(x){
+    sqrt(var(x)/length(x))
+  }
  
   # Compute mean of Bayes Factor
   bf_median_beta <- median(results$bf_beta, na.rm = TRUE)
+  # bf_median.mcse_beta <- mcse_gen(results)
   bf_mad_beta <- mad(results$bf_beta, na.rm = TRUE)
   bf_median_rho <- median(results$bf_rho, na.rm = TRUE)
   bf_mad_rho <- mad(results$bf_rho, na.rm = TRUE)
@@ -276,11 +287,11 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 # Run Simulation
 
 ```{r eval=FALSE}
-cores <- parallel::detectCores() - 2
+cores <- parallel::detectCores() - 20
 
 
 
-res <- runSimulation(design = df_design_test, 
+res <- runSimulation(design = df_design, 
                      packages = c("tidyverse", "here", "Rmpfr"),
                      replications = 1000, 
                      ncores = cores,
@@ -303,6 +314,158 @@ saveRDS(res, here::here("output", "bf_sim_res.rds"))
 ```{r}
 res <- readRDS(here::here("output", "bf_sim_res.rds"))
 ```
+
+
+<!-- Resummarize  -->
+<!-- ```{r} -->
+<!-- res <- SimDesign::reSummarise(sim_summarise, -->
+<!--                               dir = here::here("output/bf_sim_results")) -->
+<!-- saveRDS(res, here::here("output", "bf_sim_res.rds")) -->
+
+<!-- ``` -->
+
+# Analyze simulation
+
+Prep
+```{r}
+dgp_levels <- c("Empirical\nSparse" = "graph3",
+                "Sparse Chain" = "graph4", 
+                "Nonsparse" = "graph5")
+
+change_names <- c(
+  # "change1.2" = paste("Largest", "\u00D7", "1.2"),
+                  # "change1.4" = paste("Largest", "\u00D7", "1.4"),
+                  "truegraph" = "Same DGP",
+                  "change1.6" = paste("Largest", "\u00D7", "1.6"),
+                  "const0.05" = paste("All", "\u00b1", "0.05"),
+                  # "const0.1" = paste("All", "\u00b1", "0.10"),
+                  "const0.15" = paste("All", "\u00b1", "0.15")
+)
+```
+
+
+
+
+
+First focus on the implemented decisions thresholds and their correctness
+```{r}
+bf_res_plot_large <- res %>% 
+  # mutate tp, null_scale, nvar to factors
+  dplyr::mutate(tp = factor(tp),
+                null_scale = factor(null_scale),
+                nvar = factor(nvar)) %>%
+  # select tp, change, null_scale, nvar, dgp_num, and everything that contains "correct"
+  dplyr::select(tp, change, null_scale, nvar, dgp_num, contains("correct")) %>% 
+  # pivot correctness to long, then separate columns that contain beta or rho
+  tidyr::pivot_longer(-c(tp, change, null_scale, nvar, dgp_num), 
+                      values_to = "correct_rate") %>% 
+  # separate everything before first underscore in name column
+  tidyr::separate(name, into = c("method", "detect", "diff", "matrix", "correct"), sep = "_") %>% 
+  dplyr::select(!c(detect, diff, correct)) %>%
+  ggplot(aes(x = tp, y = correct_rate, color = method))+
+  geom_point()+
+  ggh4x::facet_nested(dgp_num + change ~ nvar + matrix + null_scale, scales = "free")+
+  theme_compare()+
+  scale_fill_manual(values = okabe_fill_enh)
+
+
+# save as svg in figures folder
+ggsave(here::here("figures", "bf_res_plot_large.svg"), bf_res_plot_large, 
+       width = 20, height = 10, device = "svg")
+```
+
+
+Build a large table with colors. Focus on 6 variables for now
+```{r}
+res %>% 
+  filter(nvar == 6) %>% 
+  dplyr::select(!nvar) %>% 
+  dplyr::mutate(tp = factor(tp),
+                null_scale = factor(null_scale)) %>%
+  mutate(dgp_num = fct_recode(as_factor(as.character(dgp_num)), !!!dgp_levels)) %>% 
+  mutate(change = case_when(
+    change == "truegraph" ~ "Same DGP",
+    change == "change1.6" ~ paste("Largest", "\u00D7", "1.6"),
+    change == "const0.05" ~ paste("All", "\u00b1", "0.05"),
+    change == "const0.15" ~ paste("All", "\u00b1", "0.15")
+  )) %>%
+  mutate(change = as.factor(change)) %>% 
+  # select tp, change, null_scale, nvar, dgp_num, and everything that contains "correct"
+  dplyr::select(tp, change, null_scale, dgp_num, contains("correct")) %>% 
+  # pivot correctness to long, then separate columns that contain beta or rho
+  tidyr::pivot_longer(-c(tp, change, null_scale, dgp_num), 
+                      values_to = "correct_rate") %>% 
+  # separate everything before first underscore in name column
+  tidyr::separate(name, into = c("method", "detect", "diff", "matrix", "correct"), sep = "_") %>% 
+  dplyr::select(!c(detect, diff, correct)) %>% 
+  pivot_wider(names_from = method, values_from = correct_rate) %>%
+  # reorder columns
+  dplyr::select(change, everything()) %>% 
+  gt(groupname_col = "dgp_num") %>% 
+  gt_theme_538() %>%
+  gt_color_rows(
+    columns = c(bf, rope), 
+    palette = c("#CC79A7", "#009E73"),
+    domain = c(0, 1)
+  ) %>% 
+  # save as html in figures
+  gtsave(here::here("figures", "bf_res_table_large.html"))
+                                  
+                                  
+                                  
+```
+
+Summarize it a bit more: 
+```{r}
+res %>% 
+  filter(nvar == 6) %>% 
+  dplyr::select(!nvar) %>% 
+  dplyr::mutate(tp = factor(tp),
+                null_scale = factor(null_scale)) %>%
+  mutate(dgp_num = fct_recode(as_factor(as.character(dgp_num)), !!!dgp_levels)) %>% 
+  mutate(change = case_when(
+    change == "truegraph" ~ "Same DGP",
+    change == "change1.6" ~ paste("Largest", "\u00D7", "1.6"),
+    change == "const0.05" ~ paste("All", "\u00b1", "0.05"),
+    change == "const0.15" ~ paste("All", "\u00b1", "0.15")
+  )) %>%
+  mutate(change = as.factor(change)) %>% 
+  # select tp, change, null_scale, nvar, dgp_num, and everything that contains "correct"
+  dplyr::select(tp, change, null_scale, dgp_num, contains("correct")) %>% 
+  # pivot correctness to long, then separate columns that contain beta or rho
+  tidyr::pivot_longer(-c(tp, change, null_scale, dgp_num), 
+                      values_to = "correct_rate") %>% 
+  # separate everything before first underscore in name column
+  tidyr::separate(name, into = c("method", "detect", "diff", "matrix", "correct"), sep = "_") %>% 
+  dplyr::select(!c(detect, diff, correct)) %>% 
+  pivot_wider(names_from = method, values_from = correct_rate) %>%
+  # reorder columns
+  dplyr::select(change, everything()) %>% 
+  group_by(dgp_num, tp, null_scale) %>% 
+  summarize(across(c(bf,rope), 
+                    ~mean(.x, na.rm = TRUE))) %>% 
+  gt(groupname_col = "dgp_num") %>% 
+  gt_theme_538() %>%
+  gt_color_rows(
+    columns = c(bf, rope), 
+    palette = c("#CC79A7", "#009E73"),
+    domain = c(0, 1)
+  ) %>% 
+  # save as html in figures
+  gtsave(here::here("figures", "bf_res_table_summary.html"))
+
+
+```
+
+
+
+
+
+
+
+
+
+#--- OLD CODE
 
 # Analyze Simulation
 
