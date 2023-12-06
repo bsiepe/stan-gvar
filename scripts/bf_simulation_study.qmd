@@ -457,9 +457,93 @@ res %>%
 
 ```
 
+## ROPE
+Look into average ROPE inclusion. This is a bit unnecessarily complicated.
+```{r}
+res %>% 
+  filter(nvar == 6) %>% 
+  dplyr::select(!nvar) %>% 
+  dplyr::mutate(tp = factor(tp),
+                null_scale = factor(null_scale)) %>%
+  mutate(dgp_num = fct_recode(as_factor(as.character(dgp_num)), !!!dgp_levels)) %>% 
+  mutate(change = case_when(
+    change == "truegraph" ~ "Same DGP",
+    change == "change1.6" ~ paste("Largest", "\u00D7", "1.6"),
+    change == "const0.05" ~ paste("All", "\u00b1", "0.05"),
+    change == "const0.15" ~ paste("All", "\u00b1", "0.15")
+  )) %>%
+  mutate(change = as.factor(change)) %>% 
+  # select tp, change, null_scale, nvar, dgp_num
+  dplyr::select(tp, change, null_scale, dgp_num, contains("rope")) %>% 
+  select(!contains("correct")) %>%
+  tidyr::pivot_longer(-c(tp, change, null_scale, dgp_num), 
+                      values_to = "value") %>% 
+  # separate at last underscore
+  tidyr::separate(name, into = c("method", "matrix"), sep = "_(?=[^_]+$)") %>% 
+  tidyr::separate(method, into = c("rope", "stat"), sep = "_(?=[^_]+$)") %>% 
+  select(!rope) %>%
+  mutate(stat = ifelse(stat == "diff", "Detection", stat)) %>% 
+  pivot_wider(names_from = stat, values_from = value) %>% 
+  # recalculate detection correctness again
+  mutate(change_bin = ifelse(change == "Same DGP", 0, 1),
+         same_bin = ifelse(change == "Same DGP", 1, 0)) %>%
+  mutate(decision_correct = change_bin * Detection + same_bin * (1 - Detection)) %>% 
+  select(!c(same_bin, change_bin)) %>% 
+  gt(groupname_col = "dgp_num") %>% 
+  gt_theme_538() %>%
+  gt_color_rows(
+    columns = decision_correct, 
+    palette = c("#CC79A7", "#009E73"),
+    domain = c(0, 1)
+  )
+
+```
 
 
+## Bayes Factor
 
+```{r}
+res %>% 
+  filter(nvar == 6) %>% 
+  dplyr::select(!nvar) %>% 
+  dplyr::mutate(tp = factor(tp),
+                null_scale = factor(null_scale)) %>%
+  mutate(dgp_num = fct_recode(as_factor(as.character(dgp_num)), !!!dgp_levels)) %>% 
+  mutate(change = case_when(
+    change == "truegraph" ~ "Same DGP",
+    change == "change1.6" ~ paste("Largest", "\u00D7", "1.6"),
+    change == "const0.05" ~ paste("All", "\u00b1", "0.05"),
+    change == "const0.15" ~ paste("All", "\u00b1", "0.15")
+  )) %>%
+  mutate(change = as.factor(change)) %>% 
+  # select tp, change, null_scale, nvar, dgp_num
+  dplyr::select(tp, change, null_scale, dgp_num, contains("bf")) %>% 
+  select(!contains("correct")) %>%
+  tidyr::pivot_longer(-c(tp, change, null_scale, dgp_num), 
+                      values_to = "value") %>% 
+  # separate at last underscore
+  tidyr::separate(name, into = c("method", "matrix"), sep = "_(?=[^_]+$)") %>% 
+  tidyr::separate(method, into = c("bf", "stat"), sep = "_(?=[^_]+$)") %>% 
+  select(!bf) %>%
+  mutate(stat = ifelse(stat == "diff", "Detection", stat)) %>% 
+  pivot_wider(names_from = stat, values_from = value) %>% 
+  # recalculate detection correctness again
+  mutate(change_bin = ifelse(change == "Same DGP", 0, 1),
+         same_bin = ifelse(change == "Same DGP", 1, 0)) %>%
+  mutate(decision_correct = change_bin * Detection + same_bin * (1 - Detection)) %>% 
+  select(!c(same_bin, change_bin, mad)) %>% 
+  # compute log BF
+  mutate("Median Log BF" = round(log10(median),2)) %>%
+  select(dgp_num, tp, change, null_scale, matrix, "Median Log BF", Detection, decision_correct) %>% 
+  gt(groupname_col = "dgp_num") %>% 
+  gt_theme_538() %>%
+  gt_color_rows(
+    columns = decision_correct, 
+    palette = c("#CC79A7", "#009E73"),
+    domain = c(0, 1)
+  ) %>% 
+  gtsave(here::here("figures", "log_bf_sim_table.html"))
+```
 
 
 
