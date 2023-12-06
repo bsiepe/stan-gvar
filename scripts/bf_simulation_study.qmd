@@ -326,6 +326,8 @@ res <- readRDS(here::here("output", "bf_sim_res.rds"))
 
 # Analyze simulation
 
+Very important to note here: Scale of 0.05 actually implies a maximum difference of 0.1.
+
 Prep
 ```{r}
 dgp_levels <- c("Empirical\nSparse" = "graph3",
@@ -489,6 +491,7 @@ res %>%
          same_bin = ifelse(change == "Same DGP", 1, 0)) %>%
   mutate(decision_correct = change_bin * Detection + same_bin * (1 - Detection)) %>% 
   select(!c(same_bin, change_bin)) %>% 
+  filter(null_scale == 0.05) %>% 
   gt(groupname_col = "dgp_num") %>% 
   gt_theme_538() %>%
   gt_color_rows(
