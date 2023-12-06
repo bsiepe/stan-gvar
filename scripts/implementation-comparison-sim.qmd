@@ -391,18 +391,18 @@ sim_results <- SimDesign::runSimulation(design = df_design,
 SimClean()
 sim_sum <- SimExtract(sim_results, "summarise")
 
-saveRDS(sim_results, file = here("/output/implementation-sim-results.RDS"))
-sim_results <- readRDS(here("output/implementation-sim-results.RDS"))
+saveRDS(sim_results, file = here("/output/implementation_sim_results.RDS"))
+sim_results <- readRDS(here("output/implementation_sim_results.RDS"))
 
 
 
 ```
 
-Add the MCSE to the results
-```{r}
-resum_results <- reSummarise(sim_summarise, dir = "~/stan-gvar/scripts/implementation-sim-results.rds-results_pc04669")
-saveRDS(sim_results, file = "~/stan-gvar/output/implementation_sim_results.RDS")
-```
+<!-- Add the MCSE to the results -->
+<!-- ```{r} -->
+<!-- resum_results <- reSummarise(sim_summarise, dir = "~/stan-gvar/scripts/implementation-sim-results.rds-results_pc04669") -->
+<!-- saveRDS(resum_results, file = "~/stan-gvar/output/implementation_sim_results.RDS") -->
+<!-- ``` -->
 
 
 
@@ -418,16 +418,12 @@ sim_results %>%
   pivot_longer(cols = contains(c("bias", "mse", "pmad")), 
                names_to = "pm", 
                values_to = "value") %>% 
-  # disregard everything with pmad for now
-  filter(!str_detect(pm, "pmad")) %>%
-  # separate the pm column into the performance measure, matrix, and the method
-  separate(pm, into = c("pm", "mat", "method"), sep = "_") %>% 
-  ggplot(aes(x = tp, y = value, color = method))+
-  geom_point()+
-  ggh4x::facet_nested(dgp ~ pm + mat, scales = "free")+
-  # theme_compare()+
-  ggokabeito::scale_color_okabe_ito()
-  
+  filter(!str_detect(pm, "pmad")) %>% 
+  # separate pm column into two columns
+  # one that contains each term with .mcse and one that does not
+  separate(pm, into = c("pm", "mcse"), sep = "\\.")
+
+
 
 ```
 
