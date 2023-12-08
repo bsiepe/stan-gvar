@@ -14,11 +14,40 @@ ANALYSIS:	ESTIMATOR = BAYES;      ! set estimator (must be Bayes for DSEM)
                                     ! the convergence criterion indicates
                                     ! convergence was not reached
 
-MODEL:	    V1 ON V1&1 V2&1 V3&1 V4&1;        
-            V2 ON V1&1 V2&1 V3&1 V4&1;
-            V3 ON V1&1 V2&1 V3&1 V4&1;
-            V4 ON V1&1 V2&1 V3&1 V4&1;
+MODEL:	    !VAR Parameters 
+            V1 ON V1&1 (b1)    
+            V2&1 (b2) 
+            V3&1 (b3) 
+            V4&1 (b4);        
+            V2 ON V1&1 (b5)
+            V2&1 (b6)  
+            V3&1 (b7)
+            V4&1 (b8);
+            V3 ON V1&1 (b9) 
+            V2&1 (b10)
+            V3&1 (b11)
+            V4&1 (b12);
+            V4 ON V1&1 (b13) 
+            V2&1 (b14)
+            V3&1 (b15)
+            V4&1 (b16);
+            
+            !Covariance Parameters
+            V1 with V2 (s12) 
+                    V3 (s13) 
+                    V4 (s14);
+            V2 with V3 (s23) 
+                    V4 (s24);
+            V3 with V4 (s34);
+            
+            !Variance Parameters
+            V1 (s11)
+            V2 (s22)
+            V3 (s33)
+            V4 (s44);
 
+MODEL PRIORS: b1-b16 ~ N(0,1);
+              s12 ~ IW(1,1);
 OUTPUT:	    TECH1 TECH8;            ! asking additional output
 SAVEDATA: BPARAMETERS IS additional_mplus.dat; ! saving posterior samples
 PLOT:	    TYPE = PLOT3;           ! asking for plots
