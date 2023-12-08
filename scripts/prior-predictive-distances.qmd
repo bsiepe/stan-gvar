@@ -1,0 +1,233 @@
+---
+title: "prior-predictive-distances"
+format: html
+editor: visual
+---
+
+# Prep
+
+Idea: Use prior predictive fits to create H0 prior.
+
+I want to create a function for Bayesian prior predictive checks. The structure of the function should be as follows: 1. As input, it takes a beta_prior and rho_prior and a n_rep argument (default = 100). 2. Then, it creates n_rep samples from the priors. To sample from the beta_prior, use rnorm(0, beta_prior). To sample from the rho_prior, use BGGM:: 3. Then, for each of n_rep, simulate two datasets with graphicalVAR::graphicalVARsim. 4. On each of these two datasets, fit a VAR model with BGGM::var_estimate. 5. Then, compute the distance between the two estimated models.
+
+# Write function
+
+```{r}
+prior_predictive_check <- function(n_var,
+                                   beta_prior, 
+                                   rho_prior, 
+                                   n_rep = 100,
+                                   n_tp = NULL,
+                                   dist = "frob",
+                                   bggm_iter = 50000,
+                                   burnin = 1000,
+                                   # number of posterior samples for distance computation
+                                   dist_iter = 100,
+                                   seed = 35037) {
+  # browser()
+  set.seed(35037)
+  # prepare output
+  out <- list()
+  
+  for (i in seq(n_rep)) {
+    set.seed(35037 + i)
+    beta_sample <- sample_beta(n_var = n_var, beta_prior = beta_prior)
+    kappa_sample <- sample_prec(p = n_var, iter = 1)$theta  # simulate one precision matrix from the prior
+    kappa_sample <- Matrix::forceSymmetric(kappa_sample)
+    
+    dataset1 <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = n_tp,
+                                              beta = beta_sample,
+                                              kappa = kappa_sample))
+    dataset2 <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = n_tp,
+                                              beta = beta_sample,
+                                              kappa = kappa_sample))
+    
+    model1 <- try(BGGM::var_estimate(dataset1, 
+                                 rho_sd = rho_prior,
+                                 beta_sd = beta_prior,
+                                 iter = burnin + bggm_iter,
+                                 progress = FALSE))
+    model2 <- try(BGGM::var_estimate(dataset2, 
+                                 rho_sd = rho_prior,
+                                 beta_sd = beta_prior,
+                                 iter = burnin + bggm_iter,
+                                 progress = FALSE))
+    # If either model1 or model2 is an error, skip this iteration
+    # and save NA in the output for beta_distance and rho_distance
+    if (inherits(model1, "try-error") | inherits(model2, "try-error")) {
+      out[[i]] <- list(beta_distance = NA, rho_distance = NA)
+      next
+    }
+    
+    
+    #--- Compute distances
+    distance_fn_beta <- switch(dist,
+      frob = {
+        function(x, y, mod_one, mod_two) norm(x$fit$beta[, , mod_one] - y$fit$beta[, , mod_two], type = "F")
+      },
+      maxdiff = {
+        function(x, y, mod_one, mod_two) max(abs((x$fit$beta[, , mod_one] - y$fit$beta[, , mod_two])))
+      },
+      l1 = {
+        function(x, y, mod_one, mod_two) sum(abs((x$fit$beta[, , mod_one] - y$fit$beta[, , mod_two])))
+      }
+    )
+    distance_fn_pcor <- switch(dist,
+      frob = {
+        function(x, y, mod_one, mod_two) norm(x$fit$pcors[, , mod_one] - y$fit$pcors[, , mod_two], type = "F")
+      },
+      maxdiff = {
+        function(x, y, mod_one, mod_two) max(abs((x$fit$pcors[, , mod_one] - y$fit$pcors[, , mod_two])))
+      },
+      l1 = {
+        function(x, y, mod_one, mod_two) sum(abs((x$fit$pcors[, , mod_one] - y$fit$pcors[, , mod_two])))
+      }
+    )
+    
+    beta_distance <- vector("numeric", length = dist_iter)
+    rho_distance <- vector("numeric", length = dist_iter)
+    
+    for(d in seq(dist_iter)) {
+      sample <- sample(1:(burnin + bggm_iter), 2)
+      beta_distance[d] <- distance_fn_beta(model1, model2, sample[1], sample[2])
+      rho_distance[d] <- distance_fn_pcor(model1, model2, sample[1], sample[2])
+    }
+  # Save output
+   out[[i]] <- list(beta_distance = beta_distance,
+                   rho_distance = rho_distance)
+  }
+  
+  return(out)
+}
+```
+
+Function to sample beta with some stability checks: (inspired by https://github.com/SachaEpskamp/graphicalVAR/blob/master/R/gVARsimulator.R)
+
+```{r}
+sample_beta <- function(n_var,
+                        beta_prior = 0.5,
+                        max_att = 100){
+  
+  att <- 0
+  repeat{
+    beta_sample <- matrix(rnorm(0, beta_prior, 
+                              n = n_var*n_var), 
+                              nrow = n_var, 
+                              ncol = n_var)
+    
+    att <- att + 1
+    
+    eigen_beta <- eigen(beta_sample)$values
+    check_beta_mu <- all(Re(eigen_beta)^2 + Im(eigen_beta)^2 <1)
+    if(isTRUE(check_beta_mu)){
+      break()
+    } 
+      
+    
+    if(att > max_att) {
+      stop("Could not sample stable beta matrix")
+    }
+    
+  }
+  return(beta_sample)
+  
+}
+  
+  
+```
+
+Function to sample precision matrices from the prior: Inspired by: https://github.com/donaldRwilliams/BGGM/blob/master/src/bggm_fast.cpp#L414 and https://github.com/donaldRwilliams/BGGM/blob/master/R/explore.default.R#L516
+
+```{r}
+sample_prec <- function(p, # number of variables
+                        rho_prior = 0.5,
+                        iter = 1,
+                        burnin = 100,
+                        epsilon = 0.01) {
+  
+  # Obtain delta parameters
+  delta <- BGGM:::delta_solve(rho_prior)
+  
+  # Set parameters
+  nu <- 1 / epsilon
+  nuMP <- delta + p -1
+  deltaMP <- nu - p + 1
+  
+  # Initialize matrices
+  I_p <- diag(p)
+  
+  psi <- array(0, dim = c(p, p, 1))
+  psi_mcmc <- array(0, dim = c(p, p, burnin+iter))
+  
+  ## Precision
+  theta <- array(0, dim = c(p, p, 1))
+  theta_mcmc <- array(0, dim = c(p, p, burnin+iter))
+  
+  ## Covariance matrix
+  sigma <- array(0, dim = c(p, p, 1))
+  sigma_mcmc <- array(0, dim = c(p, p, burnin+iter))
+  
+  # Starting values
+  theta[,,1] <- I_p
+  sigma[,,1] <- I_p
+  psi[,,1] <- I_p
+  
+  
+  #--- Start sampling
+  for(i in 1:(burnin + iter)) {
+    
+    psi_mcmc[,,i] <- rWishart(n = p*p, df = nu, Sigma = I_p*epsilon)[,,1]
+    
+    sigma_mcmc[,,i] <- rWishart(n = p*p, df = p - 1 + delta , Sigma = solve(psi_mcmc[,,i]))[,,1]
+    
+    theta_mcmc[,,i] <- solve(sigma_mcmc[,,i])
+    
+  }
+  
+  # Cut away burnin
+  theta_mcmc <- theta_mcmc[,,(burnin + 1):(burnin + iter)]
+  sigma_mcmc <- sigma_mcmc[,,(burnin + 1):(burnin + iter)]
+  
+  # Return
+  list(theta = theta_mcmc, sigma = sigma_mcmc)
+  
+}
+
+
+
+
+```
+
+# Test function
+
+```{r}
+ppc_test <- prior_predictive_check(n_var = 6,
+                                   beta_prior = 0.5,
+                                   rho_prior = 0.25,
+                                   n_rep = 30,
+                                   n_tp = 100,
+                                   dist = "frob",
+                                   bggm_iter = 10000,
+                                   burnin = 1000,
+                                   # number of posterior samples for distance computation
+                                   dist_iter = 1000)
+
+
+```
+
+Plot the densities
+
+```{r}
+ppc_test %>%
+  purrr::map2_df(seq_along(.), ~tibble(index = .y, value = .x$beta_distance, type = "beta"))%>%
+  bind_rows(ppc_test %>%
+              purrr::map2_df(seq_along(.), 
+                             ~tibble(index = .y, value = .x$rho_distance, type = "rho"))) %>%
+  mutate(index = as.factor(index)) %>% 
+  ggplot(aes(x = value, group = index, color = index, fill = index)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~type, scales = "free") +
+  theme_compare() +
+  theme(legend.position = "none")
+
+```
