@@ -17,23 +17,37 @@ prior_predictive_check <- function(n_var,
                                    beta_prior, 
                                    rho_prior, 
                                    n_rep = 100,
+                                   n_rep_max_try = 1000,
                                    n_tp = NULL,
                                    dist = "frob",
                                    bggm_iter = 50000,
                                    burnin = 1000,
                                    # number of posterior samples for distance computation
                                    dist_iter = 100,
-                                   seed = 35037) {
+                                   seed = 35037,
+                                   scale = TRUE) {
   # browser()
   set.seed(35037)
   # prepare output
   out <- list()
   
-  for (i in seq(n_rep)) {
+  successful_attempts <- 0
+  i <- 0  # number of total attempts
+  
+  while (successful_attempts < n_rep && i < n_rep_max_try) {
+    
+    i <- i + 1
     set.seed(35037 + i)
+    
+    #--- Sample from priors
+    
     beta_sample <- sample_beta(n_var = n_var, beta_prior = beta_prior)
     kappa_sample <- sample_prec(p = n_var, iter = 1)$theta  # simulate one precision matrix from the prior
-    kappa_sample <- Matrix::forceSymmetric(kappa_sample)
+    kappa_sample <- as.matrix(Matrix::forceSymmetric(kappa_sample))
+    kappa_test <- matrixcalc::is.positive.semi.definite(kappa_sample)
+    if(!kappa_test) {
+      kappa_sample <- matrixcalc::nearPD(kappa_sample)$mat
+    }
     
     dataset1 <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = n_tp,
                                               beta = beta_sample,
@@ -41,6 +55,10 @@ prior_predictive_check <- function(n_var,
     dataset2 <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = n_tp,
                                               beta = beta_sample,
                                               kappa = kappa_sample))
+    if(isTRUE(scale)) {
+      dataset1 <- as.data.frame(scale(dataset1))
+      dataset2 <- as.data.frame(scale(dataset2))
+    }
     
     model1 <- try(BGGM::var_estimate(dataset1, 
                                  rho_sd = rho_prior,
@@ -54,16 +72,23 @@ prior_predictive_check <- function(n_var,
                                  progress = FALSE))
     # If either model1 or model2 is an error, skip this iteration
     # and save NA in the output for beta_distance and rho_distance
-    if (inherits(model1, "try-error") | inherits(model2, "try-error")) {
-      out[[i]] <- list(beta_distance = NA, rho_distance = NA)
+    if (inherits(model1, "try-error") || inherits(model2, "try-error")) {
       next
+    } else {
+      successful_attempts <- successful_attempts + 1
     }
     
+    
+    # Helper to select upper triangle elements of matrix
+    ut <- function(x) {
+      matrix(x[upper.tri(x, diag = FALSE)])
+    }
     
     #--- Compute distances
     distance_fn_beta <- switch(dist,
       frob = {
-        function(x, y, mod_one, mod_two) norm(x$fit$beta[, , mod_one] - y$fit$beta[, , mod_two], type = "F")
+        function(x, y, mod_one, mod_two) norm(x$fit$beta[, , mod_one] - y$fit$beta[, , mod_two], 
+                                              type = "F")
       },
       maxdiff = {
         function(x, y, mod_one, mod_two) max(abs((x$fit$beta[, , mod_one] - y$fit$beta[, , mod_two])))
@@ -74,13 +99,14 @@ prior_predictive_check <- function(n_var,
     )
     distance_fn_pcor <- switch(dist,
       frob = {
-        function(x, y, mod_one, mod_two) norm(x$fit$pcors[, , mod_one] - y$fit$pcors[, , mod_two], type = "F")
+        function(x, y, mod_one, mod_two) norm(ut(x$fit$pcors[, , mod_one]) - ut(y$fit$pcors[, , mod_two]), 
+                                              type = "F")
       },
       maxdiff = {
-        function(x, y, mod_one, mod_two) max(abs((x$fit$pcors[, , mod_one] - y$fit$pcors[, , mod_two])))
+        function(x, y, mod_one, mod_two) max(abs((ut(x$fit$pcors[, , mod_one]) - ut(y$fit$pcors[, , mod_two]))))
       },
       l1 = {
-        function(x, y, mod_one, mod_two) sum(abs((x$fit$pcors[, , mod_one] - y$fit$pcors[, , mod_two])))
+        function(x, y, mod_one, mod_two) sum(abs((ut(x$fit$pcors[, , mod_one]) - ut(y$fit$pcors[, , mod_two]))))
       }
     )
     
@@ -93,11 +119,14 @@ prior_predictive_check <- function(n_var,
       rho_distance[d] <- distance_fn_pcor(model1, model2, sample[1], sample[2])
     }
   # Save output
-   out[[i]] <- list(beta_distance = beta_distance,
-                   rho_distance = rho_distance)
+   out[[successful_attempts]] <- list(beta_distance = beta_distance,
+                                      rho_distance = rho_distance)
   }
   
   return(out)
+  
+  message(paste0("Number of successful attempts: ", successful_attempts))
+  message(paste0("Number of total attempts: ", i))
 }
 ```
 
@@ -204,9 +233,10 @@ sample_prec <- function(p, # number of variables
 ppc_test <- prior_predictive_check(n_var = 6,
                                    beta_prior = 0.5,
                                    rho_prior = 0.25,
-                                   n_rep = 30,
-                                   n_tp = 100,
-                                   dist = "frob",
+                                   n_rep = 50,
+                                   n_rep_max_try = 200,
+                                   n_tp = 500,
+                                   dist = "l1",
                                    bggm_iter = 10000,
                                    burnin = 1000,
                                    # number of posterior samples for distance computation
@@ -231,3 +261,7 @@ ppc_test %>%
   theme(legend.position = "none")
 
 ```
+
+
+
+
