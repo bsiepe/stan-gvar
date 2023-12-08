@@ -35,14 +35,16 @@ tp <- c(75, 200, 1e3)
 change <- c("truegraph", "change1.6", "const0.05", "const0.15")
 
 # Which dgp
-dgp_num <- c("graph3", "graph4", "graph5")
+# dgp_num <- c("graph3", "graph4", "graph5")
+dgp_num <- c("graph4")
 
 # Number of variables
 # cannot change from 6 for the moment
-nvar <- c(4, 6)
+# nvar <- c(4, 6)
+nvar <- 6
 
 # scale for null range
-null_scale <- c(.03, .04, .05)
+null_scale <- c(.05, .1, .15)
 
 df_design <- createDesign(
   tp = tp,
@@ -175,7 +177,7 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
   source(here::here("scripts","functions.R"))
 
   # BFs for Beta
-  mat_comp_beta <- compare_matrices(
+  mat_comp_beta <- compare_matrices_new(
     mat1 = draws_array2matrix(fit_bggm_true$fit$beta),
     mat2 = draws_array2matrix(fit_bggm_change$fit$beta),
     parameter_type = "Beta", 
@@ -183,10 +185,11 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     H1_prior_scale = .5,
     H0_distribution = "uniform",
     H0_prior_scale = condition$null_scale,
+    return_dist = TRUE,
     plot = FALSE
 )
-    # BFs for Beta for Rho
-  mat_comp_rho <- compare_matrices(
+    # BFs for Rho - DOES NOT WORK PROPERLY YET
+  mat_comp_rho <- compare_matrices_new(
     mat1 = draws_array2matrix(fit_bggm_true$fit$pcors),
     mat2 = draws_array2matrix(fit_bggm_change$fit$pcors),
     parameter_type = "Rho", 
@@ -194,8 +197,14 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     H1_prior_scale = .5,
     H0_distribution = "uniform",
     H0_prior_scale = condition$null_scale,
+    return_dist = TRUE,
     plot = FALSE
 )
+  
+  
+  
+  
+  
   #--- Return
   ret_analyse <- data.frame(
     # Beta
@@ -205,7 +214,13 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     # Rho
     bf_rho = (mat_comp_rho[[1]]),
     log_bf_rho = (mat_comp_rho[[2]]),
-    post_in_null_rho = mat_comp_rho[[3]]
+    post_in_null_rho = mat_comp_rho[[3]],
+    
+    # Distances
+    dist_post_beta = mat_comp_beta$diff_post,
+    dist_prior_beta = mat_comp_beta$diff_prior,
+    dist_post_rho = mat_comp_rho$diff_post,
+    dist_prior_rho = mat_comp_rho$diff_prior
     )
   
   return(ret_analyse)
@@ -277,7 +292,11 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
                      bf_detect_diff_beta_correct = bf_detect_diff_beta_correct,
                      bf_detect_diff_rho_correct = bf_detect_diff_rho_correct,
                      rope_detect_diff_beta_correct = rope_detect_diff_beta_correct,
-                     rope_detect_diff_rho_correct = rope_detect_diff_rho_correct
+                     rope_detect_diff_rho_correct = rope_detect_diff_rho_correct,
+                     diff_post_beta = results$dist_post_beta,
+                     diff_prior_beta = results$dist_prior_beta,
+                     diff_post_rho = results$dist_post_rho,
+                     diff_prior_rho = results$dist_prior_rho
                     )
   
   return(ret_summarise)
@@ -287,39 +306,40 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 # Run Simulation
 
 ```{r eval=FALSE}
-cores <- parallel::detectCores() - 20
-
+cores <- parallel::detectCores() - 10
 
 
 res <- runSimulation(design = df_design, 
                      packages = c("tidyverse", "here", "Rmpfr"),
-                     replications = 1000, 
+                     replications = 10, 
                      ncores = cores,
                      generate = sim_generate, 
                      analyse = sim_analyse, 
-                     summarise = sim_summarise, 
+                     summarise = NA,
                      fixed_objects = sim_pars,
                      save_results = TRUE,
                      save_seeds = FALSE,
-                     # debug = 'all',
                      parallel = TRUE)
 
 SimClean()
 
 # res <- SimExtract(res, what = 'results')
 # save results
-saveRDS(res, here::here("output", "bf_sim_res.rds"))
+# saveRDS(res, here::here("output", "bf_sim_res.rds"))
 ```
 
 ```{r}
 res <- readRDS(here::here("output", "bf_sim_res.rds"))
 ```
 
-
 <!-- Resummarize  -->
+
 <!-- ```{r} -->
+
 <!-- res <- SimDesign::reSummarise(sim_summarise, -->
+
 <!--                               dir = here::here("output/bf_sim_results")) -->
+
 <!-- saveRDS(res, here::here("output", "bf_sim_res.rds")) -->
 
 <!-- ``` -->
@@ -329,6 +349,7 @@ res <- readRDS(here::here("output", "bf_sim_res.rds"))
 Very important to note here: Scale of 0.05 actually implies a maximum difference of 0.1.
 
 Prep
+
 ```{r}
 dgp_levels <- c("Empirical\nSparse" = "graph3",
                 "Sparse Chain" = "graph4", 
@@ -345,11 +366,8 @@ change_names <- c(
 )
 ```
 
-
-
-
-
 First focus on the implemented decisions thresholds and their correctness
+
 ```{r}
 bf_res_plot_large <- res %>% 
   # mutate tp, null_scale, nvar to factors
@@ -376,8 +394,8 @@ ggsave(here::here("figures", "bf_res_plot_large.svg"), bf_res_plot_large,
        width = 20, height = 10, device = "svg")
 ```
 
-
 Build a large table with colors. Focus on 6 variables for now
+
 ```{r}
 res %>% 
   filter(nvar == 6) %>% 
@@ -417,7 +435,8 @@ res %>%
                                   
 ```
 
-Summarize it a bit more: 
+Summarize it a bit more:
+
 ```{r}
 res %>% 
   filter(nvar == 6) %>% 
@@ -460,7 +479,9 @@ res %>%
 ```
 
 ## ROPE
+
 Look into average ROPE inclusion. This is a bit unnecessarily complicated.
+
 ```{r}
 res %>% 
   filter(nvar == 6) %>% 
@@ -501,7 +522,6 @@ res %>%
   )
 
 ```
-
 
 ## Bayes Factor
 
@@ -547,10 +567,6 @@ res %>%
   ) %>% 
   gtsave(here::here("figures", "log_bf_sim_table.html"))
 ```
-
-
-
-
 
 #--- OLD CODE
 
