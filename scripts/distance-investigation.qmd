@@ -1,0 +1,118 @@
+---
+title: "distance-investigation"
+format: html
+editor: visual
+---
+
+# Prep
+
+In this document, we investigate distances and their behavior across different $n$ and data generating processes.
+We use data created by a mock sim in "bf_simulation_study.qmd".
+
+```{r}
+library(tsnet)
+library(BGGM)
+library(tidyverse)
+library(here)
+source(here("scripts/functions.R"))
+
+```
+
+## Load data
+Load every .RDS in the folder "distances-sim-results"
+```{r}
+# load data
+data <- list.files(here("distances-sim-results"), pattern = "*.rds", full.names = TRUE) %>% 
+  map(read_rds)
+
+```
+
+
+
+
+
+# Extract distances for different types of DGP
+This is a bit ugly, but will do for now:
+```{r}
+# extract distances for different types of DGP
+dist_cond <- bind_rows(lapply(data, function(x){
+  x$condition
+})) %>% 
+  mutate(id = 1:nrow(.))
+
+# extract distances from data which have condition$dgp == "truegraph"
+l_dists <- list()
+l_dists <- lapply(data, function(x){
+  lapply(x$results, function(y){
+    l_tmp <- list()
+    l_tmp[["dist_post_beta"]] <- y$dist_post_beta
+    l_tmp[["dist_post_rho"]] <- y$dist_post_rho
+    l_tmp[["dist_prior_beta"]] <- y$dist_prior_beta
+    l_tmp[["dist_prior_rho"]] <- y$dist_prior_rho
+    return(l_tmp)
+  })
+})
+  
+
+res_list <- lapply(l_dists, function(x){
+  lapply(x, function(y){
+    mean_val <- lapply(y, mean)
+    names(mean_val) <- paste0("mean_", names(y))
+    sd_val <- lapply(y, sd)
+    names(sd_val) <- paste0("sd_", names(y))
+    results <- c(mean_val, sd_val)
+    return(results)
+  })
+})
+
+sum_dists <- bind_rows(lapply(res_list, function(x){
+  x <- bind_rows(x)
+})) %>% 
+  # create increasing ID, each ID should repeat 10 times
+  mutate(id = rep(seq(1, nrow(.)/10), each = 10))
+  
+
+# Combine with condition data set for plotting
+df_dist <- dist_cond %>% 
+  left_join(sum_dists, by = "id")
+
+```
+
+# Plotting
+Now prepare for plotting of posterior distances:
+```{r}
+plot_dists <- df_dist %>% 
+  pivot_longer(cols = c(starts_with("mean_"), starts_with("sd_")), 
+               names_to = "stat", 
+               values_to = "value") %>% 
+  separate(stat, into = c("stat", "dist", "prior", "matrix"), sep = "_") %>% 
+  mutate(change = case_when(
+    change == "truegraph" ~ "Same DGP",
+    change == "change1.6" ~ paste("Largest", "\u00D7", "1.6"),
+    change == "const0.05" ~ paste("All", "\u00b1", "0.05"),
+    change == "const0.15" ~ paste("All", "\u00b1", "0.15")
+  )) %>%
+  mutate(change = factor(change, levels = c("Same DGP", "Largest \u00D7 1.6",
+                                            "All \u00b1 0.05", "All \u00b1 0.15"))) %>% 
+  # ignore irrelevant factors
+  select(!c(dist, dgp_num, null_scale, nvar)) %>% 
+  filter(prior == "post") %>% 
+  ggplot(aes(x = as.factor(tp), y = value, color = matrix))+
+  geom_boxplot()+
+  facet_nested(stat ~ change, scales = "free_y",axes = TRUE)+
+  theme_compare()+
+  ggokabeito::scale_color_okabe_ito(order = c(5,1))+
+  labs(x = "Timepoints", 
+       y = "",
+       caption = "DGP: Graph4, 6 Variables, 10 Repetitions",
+       title = "Posterior Distances")+
+  geom_vline(colour = "#F3F4F5", xintercept = seq(1.5, 3, 1))+
+  theme(panel.grid.major.x = element_blank(),
+        axis.line = element_line(colour = "#6d6d6e"))
+  
+ggsave(here("figures", "distances-posterior.pdf"), plot_dists, width = 10, height = 6)
+
+```
+
+
+
