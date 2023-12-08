@@ -399,36 +399,118 @@ sim_results <- readRDS(here("output/implementation_sim_results.RDS"))
 ```
 
 <!-- Add the MCSE to the results -->
+
 <!-- ```{r} -->
+
 <!-- resum_results <- reSummarise(sim_summarise, dir = "~/stan-gvar/scripts/implementation-sim-results.rds-results_pc04669") -->
+
 <!-- saveRDS(resum_results, file = "~/stan-gvar/output/implementation_sim_results.RDS") -->
+
 <!-- ``` -->
-
-
-
-
-
 
 # Visualization
 
-Organize the data into a longer format for plotting. 
+Preparation
+
 ```{r}
-sim_results %>% 
+dgp_levels <- c("Empirical\nSparse" = "graph3",
+                "Sparse Chain" = "graph4", 
+                "Nonsparse" = "graph5")
+
+```
+
+Organize the data into a longer format for plotting. Again, quite ugly.
+
+```{r}
+df_sim_res_plot <- sim_results %>% 
   # pivot longer where the column endings after the last underscore are the methods
   pivot_longer(cols = contains(c("bias", "mse", "pmad")), 
                names_to = "pm", 
                values_to = "value") %>% 
   filter(!str_detect(pm, "pmad")) %>% 
-  # separate pm column into two columns
-  # one that contains each term with .mcse and one that does not
-  separate(pm, into = c("pm", "mcse"), sep = "\\.")
-
-
+  # separate pm column 
+  separate(pm, into = c("stat", "matrix", "method"), sep = "_") %>% 
+  pivot_wider(names_from = stat, values_from = value) %>% 
+  pivot_longer(cols = c(contains("bias"), contains("mse")), 
+               names_to = c("stat", "mcse"), 
+               names_sep = "\\.",
+               values_to = "value") %>% 
+  pivot_wider(names_from = mcse, values_from = value) %>% 
+  rename("value" = "NA")
 
 ```
 
+Visualize Bias and MSE with different axis.
+
+```{r}
+# Plot Bias and MSE
+l_sim_res <- df_sim_res_plot %>% 
+  mutate(tp = as.factor(tp),
+         dgp = as.factor(dgp)) %>%
+    mutate(dgp = fct_recode(as_factor(as.character(dgp)), !!!dgp_levels)) %>%
+  # mutate the method column to caps lock
+  mutate(method = str_to_upper(method)) %>%
+  mutate(stat = as.factor(case_match(stat, 
+                           "bias" ~ "Bias", 
+                           "mse" ~ "MSE"))) %>%
+  mutate(matrix = as.factor(case_match(matrix, 
+                             "beta" ~ "Temporal", 
+                             "pcor" ~ "Contemporaneous"))) %>%
+  split(., .$stat)
+
+  
+  
+  
+ls_plots <- list()  
+  
+ls_plots[[1]] <- 
+  l_sim_res[[1]] %>%
+  ggplot(aes(x = tp, y = value, fill = method, color = method)) +
+  geom_errorbar(aes(ymin = value - mcse, ymax = value + mcse),
+                width = 0.2,
+                show.legend = FALSE,
+                alpha = 0.9)+
+  geom_point(alpha = 0.9)+
+  ggh4x::facet_nested( dgp ~ stat + matrix,
+                       axes = TRUE,
+                       remove_labels = TRUE)+
+  theme_compare()+
+  scale_fill_manual(values = okabe_fill_enh)+
+  scale_color_manual(values = okabe_color_enh)+
+  labs(x = "Time Points", y = "", fill = "Method", color = "Method")+
+  # add vertical line between factors, remove vertical gridline
+  geom_vline(colour = "#F3F4F5", xintercept = seq(1.5, 3, 1))+
+  theme(panel.grid.major.x = element_blank(),
+        axis.line = element_line(colour = "#6d6d6e"),
+        strip.text.y = element_blank())+
+  scale_y_continuous(limits = c(0,7), expand = c(0,0))
+
+ls_plots[[2]] <- 
+  l_sim_res[[2]] %>%
+  ggplot(aes(x = tp, y = value, fill = method, color = method)) +
+  geom_errorbar(aes(ymin = value - mcse, ymax = value + mcse),
+                width = 0.2,
+                show.legend = FALSE,
+                alpha = 0.9)+
+  geom_point(alpha = 0.9)+
+  ggh4x::facet_nested( dgp ~ stat + matrix,
+                       axes = TRUE,
+                       remove_labels = TRUE)+
+  theme_compare()+
+  scale_fill_manual(values = okabe_fill_enh)+
+  scale_color_manual(values = okabe_color_enh)+
+  labs(x = "Time Points", y = "", fill = "Method", color = "Method")+
+  # add vertical line between factors, remove vertical gridline
+  geom_vline(colour = "#F3F4F5", xintercept = seq(1.5, 3, 1))+
+  theme(panel.grid.major.x = element_blank(),
+        axis.line = element_line(colour = "#6d6d6e"))+
+  scale_y_continuous(limits = c(0,3), expand = c(0,0))
 
 
+plot_eval_both <- patchwork::wrap_plots(ls_plots) + 
+  patchwork::plot_layout(guides = "collect") & theme(legend.position = "top")
+  
+ggsave(here("figures/plot_eval_both_stan_sim.pdf"), plot_eval_both, 
+       width = 9, height = 6, device = "pdf")
 
-
-
+```
