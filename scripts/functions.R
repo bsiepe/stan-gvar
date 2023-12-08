@@ -698,6 +698,10 @@ compare_matrices_new <-
            # upper limit of the y-axis
            plot_ylim = NULL,
            
+           #- Settings for distances
+           # Should the posterior distances be returned? (TRUE/FALSE)
+           return_dist = FALSE,
+           
            #- Settings for Posterior Uncertainty Null
            # Type of null limit: c("sd", "ci")
            null_lim_type = NULL,
@@ -708,6 +712,8 @@ compare_matrices_new <-
            ) {
     
     require(Rmpfr)
+    
+    # browser()
     
     # fisher z-transform partial correlations
     if (parameter_type == "Rho") {
@@ -842,6 +848,7 @@ compare_matrices_new <-
         diff_prior <- diff_prior_mat %>%
           apply(., 1, sum)
         # use default priors
+        # TODO needs to be adjusted depending on beta vs. rho
       } else{
         diff_prior_mat <- abs(
           rnorm(
@@ -925,6 +932,7 @@ compare_matrices_new <-
       } else{
         stop("null_lim_type must be either 'hdi' or 'sd'")
       
+      }
     }
 
     # TODO removed percentage framing here, then adjust that in simulation
@@ -1035,15 +1043,30 @@ compare_matrices_new <-
     print(df_results)
     
     # return list with results silently
-    return(invisible(
-      list(
-        BF_01 = BF_01,
-        log_BF_01 = log_BF_01,
-        post_below_null_ub = post_in_rope,
-        prior_below_null_ub = prior_in_rope,
-        null_lim = null_lim
-      )
-    ))
+    if(isFALSE(return_dist)){
+      return(invisible(
+        list(
+          BF_01 = BF_01,
+          log_BF_01 = log_BF_01,
+          post_below_null_ub = post_in_rope,
+          prior_below_null_ub = prior_in_rope,
+          null_lim = null_lim
+        )
+      ))
+      
+    } else
+      return(invisible(
+        list(
+          BF_01 = BF_01,
+          log_BF_01 = log_BF_01,
+          post_below_null_ub = post_in_rope,
+          prior_below_null_ub = prior_in_rope,
+          null_lim = null_lim,
+          diff_post = diff_post,
+          diff_prior = diff_prior
+        )
+      ))
+
     
     # clean up
     rm(mat1,
@@ -1054,7 +1077,6 @@ compare_matrices_new <-
        diff_prior_mat,
        diff_null)
   }
-}
 
 
 
@@ -1377,5 +1399,5 @@ theme_compare <- function(){
     )
 }
 
-okabe_fill_enh <- ggokabeito::scale_fill_okabe_ito(order = c(5,1,3,4,2,6,7,8,9))
-okabe_color_enh <- ggokabeito::scale_color_okabe_ito(order = c(5,1,3,4,2,6,7,8,9))
+okabe_fill_enh <- ggokabeito::palette_okabe_ito(order = c(5,1,3,4,2,6,7,8,9))
+okabe_color_enh <- ggokabeito::palette_okabe_ito(order = c(5,1,3,4,2,6,7,8,9))
