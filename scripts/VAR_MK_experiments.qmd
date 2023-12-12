@@ -345,7 +345,7 @@ gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
 gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
 gvar_mod4 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
 # number of time points
-t <- 500
+t <- 200
 # simulate data
 data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
                                          beta = gvar_mod1$beta,
@@ -533,6 +533,89 @@ cor.plot(medians_beta_beep)
 
 ```
 
+
+# Try edge-specific priors for Stan
+
+```{r}
+# Priors
+# prior on the locations of partial correlations (scaled Beta location)
+prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
+prior_Rho_scale <- matrix(.4, nrow = K, ncol = K) # bit more regularization
+
+prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bit
+
+# Set some Beta priors to be highly informative
+prior_Beta_loc[1, 4] <- 0.23
+prior_Beta_loc[6, 1] <- 0.20
+prior_Beta_scale[1, 4] <- 0.05
+prior_Beta_scale[6, 1] <- 0.05
+
+# prepare stan data
+
+fit_stan_prior <- fit_gVAR_stan(
+  data = data_1a,
+  iter_sampling = 500,
+  method = "sampling",
+  backend = "cmdstanr",
+  cov_prior = "IW",
+  beep = seq(1,200),
+  rmv_overnight = TRUE,
+  priors = list(
+    prior_Rho_loc = prior_Rho_loc,
+    prior_Rho_scale = prior_Rho_scale,
+    prior_Beta_loc = prior_Beta_loc,
+    prior_Beta_scale = prior_Beta_scale
+  )
+)
+
+
+# compare to fitting with uninformed priors
+prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
+prior_Rho_scale <- matrix(.4, nrow = K, ncol = K) # bit more regularization
+
+prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
+prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)  # regularize a bitCompare to fitting with more uninformed priors
+
+
+
+fit_stan <- fit_gVAR_stan(
+  data = data_1a,
+  iter_sampling = 500,
+  method = "sampling",
+  beep = seq(1,200),
+  rmv_overnight = FALSE,
+  backend = "cmdstanr",
+  priors = list(
+    prior_Rho_loc = prior_Rho_loc,
+    prior_Rho_scale = prior_Rho_scale,
+    prior_Beta_loc = prior_Beta_loc,
+    prior_Beta_scale = prior_Beta_scale
+  )
+)
+
+
+
+```
+
+Compare the estimates
+```{r}
+medians_beta_informed <-
+  fit_stan_prior$summary("Beta") %>% 
+  dplyr::select(median) %>% 
+  unlist() %>% 
+  round(2) %>% 
+  matrix(., nrow = K, byrow = FALSE)
+cor.plot(medians_beta)
+
+medians_beta_noninformed <-
+  fit_stan$summary("Beta") %>% 
+  dplyr::select(median) %>% 
+  unlist() %>% 
+  round(2) %>% 
+  matrix(., nrow = K, byrow = FALSE)
+cor.plot(medians_beta_beep)
+```
 
 
 
