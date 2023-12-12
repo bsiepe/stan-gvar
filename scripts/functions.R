@@ -115,8 +115,14 @@ fit_gVAR_stan <-
            n_chains = 4,
            n_cores = 4,
            server = FALSE,  # temporary option to run code on Linux server
+           center_only = FALSE,   # only center (not scale)
            ...) {
-    Y <- data %>% apply(., 2, scale)
+    if(isTRUE(center_only)){
+      Y <- data %>% apply(., 2, scale, center = TRUE, scale = FALSE)
+    } else{
+      Y <- data %>% apply(., 2, scale, center = TRUE, scale = TRUE)
+    }
+    
     K <- ncol(data)
     n_t <- nrow(data)
     
