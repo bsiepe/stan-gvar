@@ -58,14 +58,16 @@ gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200,
 l_graphs <- readRDS(here("data", "l_graphs.rds"))
 
 # Choose graph 6
-gvar_mod <- l_graphs$graph6
+# gvar_mod <- l_graphs$graph6
+# graph4
+gvar_mod <- l_graphs$graph4
 
 # Add partial correlations
 gvar_mod$PCC <- -cov2cor(gvar_mod$kappa)
 diag(gvar_mod$PCC) <- 0
 
 # Simulate data
-gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 200, 
+gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 100, 
                                           beta = gvar_mod$beta,
                                           kappa = gvar_mod$kappa)
 
@@ -395,3 +397,142 @@ net_4_fit <-
     method = "sampling"
   )
 ```
+
+
+
+# Check Beep option 
+```{r}
+n_t <- nrow(Y)
+
+# prepare stan data
+stan_data <-
+  list(K = K,
+       "T" = n_t,
+       beep = rep(1:5, length.out = n_t),
+       Y = as.matrix(Y),
+       prior_Rho_loc = prior_Rho_loc,
+       prior_Rho_scale = prior_Rho_scale,
+       prior_Beta_loc = prior_Beta_loc,
+       prior_Beta_scale = prior_Beta_scale
+       )
+# Choose model to fit
+model_name <- "VAR_wishart_beep"
+# number of MCMC chains
+n_chains <- 4
+```
+
+
+Fit the Stan model with the beep option: 
+```{r}
+# Compile model
+var_lkj_model_beep <- cmdstanr::cmdstan_model(
+  stan_file = here("scripts", paste0(model_name, ".stan")),
+  pedantic = TRUE#,   
+  #quiet = FALSE
+  )
+# Run sampler
+var_lkj_fit_beep <- var_lkj_model$sample(
+  data = stan_data,
+  seed = 2023,
+  chains = n_chains,
+  parallel_chains = n_chains,
+  iter_warmup = 500,
+  iter_sampling = 500,
+  refresh = 500,
+  thin = 1,
+  adapt_delta = .8,
+  init = .1
+)
+# time to fit
+var_lkj_fit_beep$time()$total
+```
+
+Fit without beep:
+```{r}
+# prepare stan data
+stan_data <-
+  list(K = K,
+       "T" = n_t,
+       Y = as.matrix(Y),
+       prior_Rho_loc = prior_Rho_loc,
+       prior_Rho_scale = prior_Rho_scale,
+       prior_Beta_loc = prior_Beta_loc,
+       prior_Beta_scale = prior_Beta_scale
+       )
+# Choose model to fit
+model_name <- "VAR_wishart"
+# number of MCMC chains
+n_chains <- 4
+
+# Compile model
+var_lkj_model <- cmdstanr::cmdstan_model(
+  stan_file = here("scripts", paste0(model_name, ".stan")),
+  pedantic = TRUE#,   
+  #quiet = FALSE
+  )
+# Run sampler
+var_lkj_fit <- var_lkj_model$sample(
+  data = stan_data,
+  seed = 2023,
+  chains = n_chains,
+  parallel_chains = n_chains,
+  iter_warmup = 500,
+  iter_sampling = 500,
+  refresh = 500,
+  thin = 1,
+  adapt_delta = .8,
+  init = .1
+)
+# time to fit
+var_lkj_fit$time()$total
+```
+
+
+
+
+graphicalVAR as comparison: 
+```{r}
+# prepare data
+graphicalvar_data <- gvar_dat %>% 
+  as.data.frame() %>% 
+  mutate(beep = rep(1:5, length.out = nrow(.)))
+
+beepvar <- graphicalvar_data$beep
+# Fit model
+graphicalvar_fit <- graphicalVAR::graphicalVAR(
+  data = graphicalvar_data,
+  beepvar = "beep",
+  lambda_beta = 0,
+  lambda_kappa = 0
+)
+
+cor.plot(graphicalvar_fit$beta[,-1])
+
+```
+
+
+
+
+Check estimates:
+```{r}
+medians_beta <-
+  var_lkj_fit$summary("Beta") %>% 
+  dplyr::select(median) %>% 
+  unlist() %>% 
+  round(2) %>% 
+  matrix(., nrow = K, byrow = FALSE)
+cor.plot(medians_beta)
+
+medians_beta_beep <-
+  var_lkj_fit_beep$summary("Beta") %>% 
+  dplyr::select(median) %>% 
+  unlist() %>% 
+  round(2) %>% 
+  matrix(., nrow = K, byrow = FALSE)
+cor.plot(medians_beta_beep)
+
+```
+
+
+
+
