@@ -50,7 +50,7 @@ gvar_mod2 <- l_changed_graphs_0305[["graph5"]][["const0.05"]]
 gvar_mod3 <- l_changed_graphs_0305[["graph5"]][["const0.1"]]
 gvar_mod4 <- l_changed_graphs_0305[["graph5"]][["const0.15"]]
 # number of time points
-t <- 500
+t <- 250
 # simulate data
 data_1a <- graphicalVAR::graphicalVARsim(nTime = t,
                                          beta = gvar_mod1$beta,
@@ -360,7 +360,7 @@ data.frame(log_BFs = log_BFs, log_BFs_boot = log_BFs_boot) %>%
 ```{r}
 bggm_iter <- 50000
 rho_prior <- 0.25
-beta_prior <- 0.1
+beta_prior <- .5
 
 net_1a_fit <-
   BGGM::var_estimate(
@@ -369,7 +369,7 @@ net_1a_fit <-
     rho_sd = rho_prior,
     beta_sd = beta_prior
   )
-net_1b_fit <-       #throws an error here
+net_1b_fit <-       
   BGGM::var_estimate(
     as.data.frame(data_1b),
     iter = bggm_iter,
@@ -410,7 +410,7 @@ prior_scale <- beta_prior
 null_scale <- .01
 
 # 1a vs 1b
-bf1a_1b<- compare_matrices(
+bf1a_1b <- compare_matrices(
   mat1 = draws_array2matrix(net_1a_fit$fit$beta),
   mat2 = draws_array2matrix(net_1b_fit$fit$beta),
   bootstrap_samples = n_boot,
@@ -422,7 +422,7 @@ bf1a_1b<- compare_matrices(
 bf1a_1b$BF_01
 
 # 1a vs 2
-bf1a_2<- compare_matrices(
+bf1a_2 <- compare_matrices(
   mat1 = draws_array2matrix(net_1a_fit$fit$beta),
   mat2 = draws_array2matrix(net_2_fit$fit$beta),
   bootstrap_samples = n_boot,
@@ -431,10 +431,10 @@ bf1a_2<- compare_matrices(
   H0_prior_scale = null_scale,
   plot = TRUE
 )
-round(bf1a_2$BF_01,10)
+bf1a_2$BF_01
 
 # 1a vs 3
-bf1a_3<- compare_matrices(
+bf1a_3 <- compare_matrices(
   mat1 = draws_array2matrix(net_1a_fit$fit$beta),
   mat2 = draws_array2matrix(net_3_fit$fit$beta),
   bootstrap_samples = n_boot,
@@ -445,8 +445,279 @@ bf1a_3<- compare_matrices(
 )
 bf1a_3$BF_01
 
+# 1a vs 4
+bf1a_4 <- compare_matrices(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_4_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  plot = TRUE
+)
+bf1a_4$BF_01
+
 ```
 
+# Use posterior uncertainty as ROPE prior
+Try new implementation of uncertainty ROPE prior
+```{r}
+source(here("scripts","functions.R"))
+n_boot <- 0
+null_dist <- "uniform"
+null_lim_type <- "sd"
+null_lim_hdi_scale <- .50
+prior_scale <- beta_prior
+null_scale <- .1
+
+# 1a vs 1b
+bf1a_1b <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_1b_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  null_lim_type = null_lim_type,
+  null_lim_hdi_scale = null_lim_hdi_scale,
+  plot = TRUE
+)
+bf1a_1b$BF_01
+
+# 1a vs 2
+bf1a_2 <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_2_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  null_lim_type = null_lim_type,
+  plot = TRUE
+)
+bf1a_2$BF_01
+
+# 1a vs 3
+bf1a_3 <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_3_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  null_lim_type = null_lim_type,
+  null_lim_hdi_scale = null_lim_hdi_scale,
+  plot = TRUE
+)
+bf1a_3$BF_01
+
+# 1a vs 4
+bf1a_4 <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_4_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  null_lim_type = null_lim_type,
+  null_lim_hdi_scale = null_lim_hdi_scale,
+  plot = TRUE
+)
+bf1a_4$BF_01
+
+``` 
+
+
+## Try new function
+
+```{r}
+source(here("scripts","functions.R"))
+bf1a_1b <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_1b_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  # null_lim_type = null_lim_type,
+  return_dist = TRUE,
+  # null_lim_hdi_scale = null_lim_hdi_scale,
+  plot = FALSE
+)
+bf1a_2 <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_2_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  # null_lim_type = null_lim_type,
+  return_dist = TRUE,
+  # null_lim_hdi_scale = null_lim_hdi_scale,
+  plot = FALSE
+)
+
+bf1a_3 <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_3_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  # null_lim_type = null_lim_type,
+  return_dist = TRUE,
+  # null_lim_hdi_scale = null_lim_hdi_scale,
+  plot = FALSE
+)
+
+
+bf1a_4 <- compare_matrices_new(
+  mat1 = draws_array2matrix(net_1a_fit$fit$beta),
+  mat2 = draws_array2matrix(net_4_fit$fit$beta),
+  bootstrap_samples = n_boot,
+  H1_prior_scale = prior_scale,
+  H0_distribution = null_dist,
+  H0_prior_scale = null_scale,
+  # null_lim_type = null_lim_type,
+  return_dist = TRUE,
+  # null_lim_hdi_scale = null_lim_hdi_scale,
+  plot = FALSE
+)
+
+```
+# Use tsnet to obtain posterior uncertainties for visualization
+
+```{r}
+post_within1a <- tsnet::post_distance_within(net_1a_fit,
+                            comp = "l1",
+                            pred = FALSE,
+                            sampling_method = "random")
+post_within1b <- tsnet::post_distance_within(net_1b_fit,
+                            comp = "l1",
+                            pred = FALSE,
+                            sampling_method = "random")
+post_within2 <- tsnet::post_distance_within(net_2_fit,
+                            comp = "l1",
+                            pred = FALSE,
+                            sampling_method = "random")
+post_within3 <- tsnet::post_distance_within(net_3_fit,
+                            comp = "l1",
+                            pred = FALSE,
+                            sampling_method = "random")
+
+post_within4 <- tsnet::post_distance_within(net_4_fit,
+                            comp = "l1",
+                            pred = FALSE,
+                            sampling_method = "random")
+
+# Combine the beta distances into a single data frame
+post_beta1a4 <- data.frame(
+  net_1a = post_within1a$beta,
+  net_4 = post_within4$beta
+)
+post_beta1ab <- data.frame(
+  net_1a = post_within1a$beta,
+  net_1b = post_within1b$beta
+)
+post_beta1a2 <- data.frame(
+  net_1a = post_within1a$beta,
+  net_2 = post_within2$beta
+)
+post_beta1a3 <- data.frame(
+  net_1a = post_within1a$beta,
+  net_3 = post_within3$beta
+)
+
+
+# Compare to posterior differences
+post_beta1ab$net_diff <- sample(bf1a_1b$diff_post, 1000, replace = FALSE)
+post_beta1a2$net_diff <- sample(bf1a_2$diff_post, 1000, replace = FALSE)
+post_beta1a3$net_diff <- sample(bf1a_3$diff_post, 1000, replace = FALSE)
+post_beta1a4$net_diff <- sample(bf1a_4$diff_post, 1000, replace = FALSE)
+
+
+# Plot
+post_beta1ab %>% 
+  pivot_longer(cols = everything(), names_to = "net", values_to = "beta") %>% 
+  ggplot(aes(x = beta, fill = net)) +
+  geom_density()+
+  theme_compare()+
+  ggokabeito::scale_fill_okabe_ito(order = c(5,1:8))
+
+post_beta1a2 %>%
+  pivot_longer(cols = everything(), names_to = "net", values_to = "beta") %>% 
+  ggplot(aes(x = beta, fill = net)) +
+  geom_density()+
+  theme_compare()+
+  ggokabeito::scale_fill_okabe_ito(order = c(5,1:8))
+
+post_beta1a3 %>%
+  pivot_longer(cols = everything(), names_to = "net", values_to = "beta") %>% 
+  ggplot(aes(x = beta, fill = net)) +
+  geom_density()+
+  theme_compare()+
+  ggokabeito::scale_fill_okabe_ito(order = c(5,1:8))
+
+post_beta1a4 %>%
+  pivot_longer(cols = everything(), names_to = "net", values_to = "beta") %>% 
+  ggplot(aes(x = beta, fill = net)) +
+  geom_density()+
+  theme_compare()+
+  ggokabeito::scale_fill_okabe_ito(order = c(5,1:8))
+
+
+
+```
+
+Now, we can actually calculate a Bayes factor for this comparison by treating the 3 groups like in a t-test. We test if the within-posterior distances are smaller than the between-posterior distances. 
+
+```{r}
+set.seed(35037)
+t_res1ab <- bain::t_test(
+  post_beta1ab$net_diff,
+  post_beta1ab$net_1a,
+  var.equal = FALSE)
+
+res1ab <- bain::bain(t_res1ab, "x = y; x > y; x < y")
+
+t_res1a2 <- bain::t_test(
+  post_beta1a2$net_diff,
+  post_beta1a2$net_1a,
+  var.equal = FALSE)
+res1a2 <- bain::bain(t_res1a2, "x = y; x > y; x < y")
+
+t_res1a3 <- bain::t_test(
+  post_beta1a3$net_diff,
+  post_beta1a3$net_1a,
+  var.equal = FALSE)
+res1a3 <- bain::bain(t_res1a3, "x = y; x > y; x < y")
+
+t_res1a4 <- bain::t_test(
+  post_beta1a4$net_diff,
+  post_beta1a4$net_1a,
+  var.equal = FALSE)
+res1a4 <- bain::bain(t_res1a4, "x = y; x > y; x < y")
+
+
+```
+
+
+Can do an equivalence test: 
+```{r}
+eq <- 0.05
+p <- 6
+eq_lim <- p*eq 
+
+# No differences
+eq_res1ab <- bain::bain(t_res1ab, "x - y < 0.3; x - y > 0.3")
+eq_res1ab
+
+# Strong differences
+eq_res1a4 <- bain::bain(t_res1a4, "x - y < 0.3; x - y > 0.3")
+eq_res1a4
+
+
+```
 
 
 
