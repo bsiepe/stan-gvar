@@ -415,8 +415,7 @@ stan_data <-
        prior_Beta_loc = prior_Beta_loc,
        prior_Beta_scale = prior_Beta_scale
        )
-# Choose model to fit
-model_name <- "VAR_wishart_beep"
+
 # number of MCMC chains
 n_chains <- 4
 ```
@@ -424,12 +423,16 @@ n_chains <- 4
 
 Fit the Stan model with the beep option: 
 ```{r}
+# Choose model to fit
+model_name <- "VAR_wishart_beep"
+
 # Compile model
 var_model_beep <- cmdstanr::cmdstan_model(
   stan_file = here("scripts", paste0(model_name, ".stan")),
   pedantic = TRUE#,   
   #quiet = FALSE
   )
+
 # Run sampler
 var_fit_beep <- var_model_beep$sample(
   data = stan_data,
@@ -449,20 +452,8 @@ var_fit_beep$time()$total
 
 Fit without beep:
 ```{r}
-# prepare stan data
-stan_data <-
-  list(K = K,
-       "T" = n_t,
-       Y = as.matrix(Y),
-       prior_Rho_loc = prior_Rho_loc,
-       prior_Rho_scale = prior_Rho_scale,
-       prior_Beta_loc = prior_Beta_loc,
-       prior_Beta_scale = prior_Beta_scale
-       )
 # Choose model to fit
 model_name <- "VAR_wishart"
-# number of MCMC chains
-n_chains <- 4
 
 # Compile model
 var_model_no_beep <- cmdstanr::cmdstan_model(
@@ -470,6 +461,7 @@ var_model_no_beep <- cmdstanr::cmdstan_model(
   pedantic = TRUE#,   
   #quiet = FALSE
   )
+
 # Run sampler
 var_fit_no_beep <- var_model_no_beep$sample(
   data = stan_data,
@@ -530,7 +522,6 @@ medians_beta_beep <-
   round(2) %>% 
   matrix(., nrow = K, byrow = FALSE)
 cor.plot(medians_beta_beep)
-
 ```
 
 
