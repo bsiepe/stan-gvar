@@ -425,13 +425,13 @@ n_chains <- 4
 Fit the Stan model with the beep option: 
 ```{r}
 # Compile model
-var_lkj_model_beep <- cmdstanr::cmdstan_model(
+var_model_beep <- cmdstanr::cmdstan_model(
   stan_file = here("scripts", paste0(model_name, ".stan")),
   pedantic = TRUE#,   
   #quiet = FALSE
   )
 # Run sampler
-var_lkj_fit_beep <- var_lkj_model$sample(
+var_fit_beep <- var_model_beep$sample(
   data = stan_data,
   seed = 2023,
   chains = n_chains,
@@ -444,7 +444,7 @@ var_lkj_fit_beep <- var_lkj_model$sample(
   init = .1
 )
 # time to fit
-var_lkj_fit_beep$time()$total
+var_fit_beep$time()$total
 ```
 
 Fit without beep:
@@ -465,13 +465,13 @@ model_name <- "VAR_wishart"
 n_chains <- 4
 
 # Compile model
-var_lkj_model <- cmdstanr::cmdstan_model(
+var_model_no_beep <- cmdstanr::cmdstan_model(
   stan_file = here("scripts", paste0(model_name, ".stan")),
   pedantic = TRUE#,   
   #quiet = FALSE
   )
 # Run sampler
-var_lkj_fit <- var_lkj_model$sample(
+var_fit_no_beep <- var_model_no_beep$sample(
   data = stan_data,
   seed = 2023,
   chains = n_chains,
@@ -484,7 +484,7 @@ var_lkj_fit <- var_lkj_model$sample(
   init = .1
 )
 # time to fit
-var_lkj_fit$time()$total
+var_fit_no_beep$time()$total
 ```
 
 
@@ -516,7 +516,7 @@ cor.plot(graphicalvar_fit$beta[,-1])
 Check estimates:
 ```{r}
 medians_beta <-
-  var_lkj_fit$summary("Beta") %>% 
+  var_fit_no_beep$summary("Beta") %>% 
   dplyr::select(median) %>% 
   unlist() %>% 
   round(2) %>% 
@@ -524,7 +524,7 @@ medians_beta <-
 cor.plot(medians_beta)
 
 medians_beta_beep <-
-  var_lkj_fit_beep$summary("Beta") %>% 
+  var_fit_beep$summary("Beta") %>% 
   dplyr::select(median) %>% 
   unlist() %>% 
   round(2) %>% 
