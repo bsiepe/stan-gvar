@@ -522,6 +522,10 @@ medians_beta_beep <-
   round(2) %>% 
   matrix(., nrow = K, byrow = FALSE)
 cor.plot(medians_beta_beep)
+
+cor.plot(medians_beta - medians_beta_beep)
+cor.plot(graphicalvar_fit$beta[,-1] - medians_beta_beep)
+cor.plot(graphicalvar_fit$beta[,-1] - medians_beta)
 ```
 
 
