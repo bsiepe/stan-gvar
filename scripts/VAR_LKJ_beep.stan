@@ -14,7 +14,7 @@ data {
 }
 ////////////////////////////////////////////////////////////////////////////////
 transformed data{
-  real first_beep = min(to_vector(beep));
+  int first_beep = min(beep);
 }
 ////////////////////////////////////////////////////////////////////////////////
 parameters {
@@ -75,7 +75,7 @@ model {
     // Cholesky decomposition of the covariance matrix
     matrix[K, K] Sigma_chol = diag_pre_multiply(exp(sigma_theta), L_Theta);
     for(t in 2:T){
-      if(beep[t] != first_beep){
+      if(beep[t] > first_beep){
         // BS: What about intercept?
         vector[K] mu = Beta * Y[t-1,];
         target += multi_normal_cholesky_lpdf(Y[t,] | mu, Sigma_chol);
@@ -85,12 +85,13 @@ model {
 }
 ////////////////////////////////////////////////////////////////////////////////
 generated quantities{
+  int min_beep = first_beep;
   vector[T-1] log_lik;
   {
     // Cholesky decomposition of the covariance matrix
     matrix[K, K] Sigma_chol = diag_pre_multiply(exp(sigma_theta), L_Theta);
     for(t in 2:T){
-      if(beep[t] != first_beep){
+      if(beep[t] > first_beep){
         // BS: What about intercept?
         vector[K] mu = Beta * Y[t-1,];
         log_lik[t-1] = multi_normal_cholesky_lpdf(Y[t, ] | mu, Sigma_chol);

@@ -67,7 +67,7 @@ gvar_mod$PCC <- -cov2cor(gvar_mod$kappa)
 diag(gvar_mod$PCC) <- 0
 
 # Simulate data
-gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 100, 
+gvar_dat <- graphicalVAR::graphicalVARsim(nTime = 300, 
                                           beta = gvar_mod$beta,
                                           kappa = gvar_mod$kappa)
 
@@ -403,12 +403,12 @@ net_4_fit <-
 # Check Beep option 
 ```{r}
 n_t <- nrow(Y)
-
+beep <- rep(1:5, length.out = n_t)
 # prepare stan data
 stan_data <-
   list(K = K,
        "T" = n_t,
-       beep = rep(1:5, length.out = n_t),
+       beep = beep,
        Y = as.matrix(Y),
        prior_Rho_loc = prior_Rho_loc,
        prior_Rho_scale = prior_Rho_scale,
@@ -422,7 +422,7 @@ n_chains <- 4
 
 
 Fit the Stan model with the beep option: 
-```{r}
+```{r message=FALSE}
 # Choose model to fit
 model_name <- "VAR_wishart_beep"
 
@@ -448,10 +448,11 @@ var_fit_beep <- var_model_beep$sample(
 )
 # time to fit
 var_fit_beep$time()$total
+var_fit_beep$summary("min_beep")
 ```
 
 Fit without beep:
-```{r}
+```{r message=FALSE}
 # Choose model to fit
 model_name <- "VAR_wishart"
 
@@ -479,15 +480,12 @@ var_fit_no_beep <- var_model_no_beep$sample(
 var_fit_no_beep$time()$total
 ```
 
-
-
-
 graphicalVAR as comparison: 
 ```{r}
 # prepare data
 graphicalvar_data <- gvar_dat %>% 
   as.data.frame() %>% 
-  mutate(beep = rep(1:5, length.out = nrow(.)))
+  mutate(beep = beep)
 
 beepvar <- graphicalvar_data$beep
 # Fit model
@@ -504,8 +502,7 @@ cor.plot(graphicalvar_fit$beta[,-1])
 
 
 
-
-Check estimates:
+##### Check estimates:
 ```{r}
 medians_beta <-
   var_fit_no_beep$summary("Beta") %>% 

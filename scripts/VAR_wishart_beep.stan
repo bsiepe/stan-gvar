@@ -15,7 +15,7 @@ data {
 ////////////////////////////////////////////////////////////////////////////////
 transformed data{
   matrix[K,K] I = diag_matrix(rep_vector(1, K));
-  real first_beep = min(to_vector(beep));
+  int first_beep = min(beep);
 }
 ////////////////////////////////////////////////////////////////////////////////
 parameters {
@@ -58,7 +58,7 @@ model {
   target+=   inv_wishart_lpdf(Theta | 3.33 + K - 1, I);  // prior on Cholesky factor
   {
     for(t in 2:T){
-      if(beep[t] != first_beep){
+      if(beep[t] > first_beep){
         // BS: What about intercept?
         vector[K] mu = Beta * Y[t-1,];
         target += multi_normal_lpdf(Y[t,] | mu, Sigma);
@@ -68,10 +68,11 @@ model {
 }
 ////////////////////////////////////////////////////////////////////////////////
 generated quantities{
+  int min_beep = first_beep;
   vector[T-1] log_lik;
   {
     for(t in 2:T){
-      if(beep[t] != first_beep){
+      if(beep[t] > first_beep){
         // BS: What about intercept?
         vector[K] mu = Beta * Y[t-1,];
         log_lik[t-1] = multi_normal_lpdf(Y[t, ] | mu, Sigma);
