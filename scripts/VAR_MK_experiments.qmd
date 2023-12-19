@@ -485,7 +485,7 @@ graphicalVAR as comparison:
 # prepare data
 graphicalvar_data <- gvar_dat %>% 
   as.data.frame() %>% 
-  mutate(beep = beep)
+  mutate(beep = rep(1:5, length.out = n_t))
 
 beepvar <- graphicalvar_data$beep
 # Fit model
