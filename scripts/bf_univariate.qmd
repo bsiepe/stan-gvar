@@ -174,9 +174,7 @@ posterior_diff_dist1ab <- estimate_multivariate_normal(diff_posterior1ab)
 
 ## Bayes Factor
 
-Now we can compute the Bayes Factor.
-Idea: replace point 0 with matrix of plausible differences. Then compute the density at this point.
-Then we get a distribution of Bayes Factors. 
+Now we can compute the Bayes Factor. Idea: replace point 0 with matrix of plausible differences. Then compute the density at this point. Then we get a distribution of Bayes Factors.
 
 ```{r}
 approx_diff_density <- function(mean_vector, cov_matrix, point) {
@@ -333,8 +331,8 @@ psych::cor.plot(round(pcor_diff,2))
 
 ```
 
-
 ## Do the same for the beta matrix
+
 ```{r}
 # args
 groups <- 2   # compare 2 networks
@@ -371,9 +369,8 @@ mats <- BGGM:::create_matrices(framed = framed,
 
 ```
 
+Now compute Bayes Factors: I don't think this works properly yet.
 
-Now compute Bayes Factors:
-I don't think this works properly yet.
 ```{r}
 # loop through upper triangular
 for(i in seq_len(nrow(indices))){
@@ -442,9 +439,6 @@ psych::cor.plot(round(BF_10,0), main = "BF_10", cex = 1)
 psych::cor.plot(round(beta_diff,2), main = "beta_diff")
 
 ```
-
-
-
 
 
 

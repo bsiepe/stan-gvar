@@ -6,6 +6,13 @@ editor: visual
 
 # Prep
 
+```{r}
+library(tidyverse)
+library(here)
+source(here("scripts/functions.R"))
+```
+
+
 Idea: Use prior predictive fits to create H0 prior.
 
 I want to create a function for Bayesian prior predictive checks. The structure of the function should be as follows: 1. As input, it takes a beta_prior and rho_prior and a n_rep argument (default = 100). 2. Then, it creates n_rep samples from the priors. To sample from the beta_prior, use rnorm(0, beta_prior). To sample from the rho_prior, use BGGM:: 3. Then, for each of n_rep, simulate two datasets with graphicalVAR::graphicalVARsim. 4. On each of these two datasets, fit a VAR model with BGGM::var_estimate. 5. Then, compute the distance between the two estimated models.
@@ -45,9 +52,11 @@ prior_predictive_check <- function(n_var,
     kappa_sample <- sample_prec(p = n_var, iter = 1)$theta  # simulate one precision matrix from the prior
     kappa_sample <- as.matrix(Matrix::forceSymmetric(kappa_sample))
     kappa_test <- matrixcalc::is.positive.semi.definite(kappa_sample)
-    if(!kappa_test) {
-      kappa_sample <- matrixcalc::nearPD(kappa_sample)$mat
-    }
+    
+    # TODO Check if this is needed
+    # if(!kappa_test) {
+      # kappa_sample <- matrixcalc::nearPD(kappa_sample)$mat
+    # }
     
     dataset1 <- as.data.frame(graphicalVAR::graphicalVARsim(nTime = n_tp,
                                               beta = beta_sample,
@@ -174,6 +183,8 @@ sample_prec <- function(p, # number of variables
                         burnin = 100,
                         epsilon = 0.01) {
   
+  # browser()
+  
   # Obtain delta parameters
   delta <- BGGM:::delta_solve(rho_prior)
   
@@ -203,6 +214,9 @@ sample_prec <- function(p, # number of variables
   
   
   #--- Start sampling
+  # TODO I don't think the burnin does anything here? They are independent
+  # also, the n in the rWishart is not used 
+  
   for(i in 1:(burnin + iter)) {
     
     psi_mcmc[,,i] <- rWishart(n = p*p, df = nu, Sigma = I_p*epsilon)[,,1]
@@ -231,11 +245,11 @@ sample_prec <- function(p, # number of variables
 
 ```{r}
 ppc_test <- prior_predictive_check(n_var = 6,
-                                   beta_prior = 0.5,
-                                   rho_prior = 0.25,
+                                   beta_prior = 0.25,
+                                   rho_prior = 0.5,
                                    n_rep = 50,
                                    n_rep_max_try = 200,
-                                   n_tp = 500,
+                                   n_tp = 400,
                                    dist = "l1",
                                    bggm_iter = 10000,
                                    burnin = 1000,
@@ -244,9 +258,11 @@ ppc_test <- prior_predictive_check(n_var = 6,
 
 
 ```
+Notably, the issue with spd is larger for longer time series. TODO: Check the generated matrices. 
+
+
 
 Plot the densities
-
 ```{r}
 ppc_test %>%
   purrr::map2_df(seq_along(.), ~tibble(index = .y, value = .x$beta_distance, type = "beta"))%>%
@@ -261,7 +277,5 @@ ppc_test %>%
   theme(legend.position = "none")
 
 ```
-
-
 
 
