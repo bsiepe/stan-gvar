@@ -55,7 +55,7 @@ model {
   target+=   std_normal_lpdf(to_vector(Beta_raw));    // prior on Beta
   //target+= student_t_lpdf(mu_Beta | 3,0,2);
   //target+= student_t_lpdf(sigma_Beta | 3,0,2);
-  target+=   inv_wishart_lpdf(Theta | 3.33 + K - 1, I);  // prior on Cholesky factor
+  target+=   inv_wishart_lpdf(Theta | 3 + K - 1, I);  // prior on Cholesky factor
   {
     for(t in 2:T){
       if(beep[t] > first_beep){
