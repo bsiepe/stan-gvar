@@ -126,6 +126,7 @@ fit_gVAR_stan <-
     K <- ncol(data)
     n_t <- nrow(data)
     
+    # TODO: Need a better check for seperate prior objects
     # Specify Priors
     if (is.null(priors)) {
       prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
