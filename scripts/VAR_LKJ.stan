@@ -57,7 +57,7 @@ model {
   
   // marginal beta: alpha = beta = eta -1 + K/2
   // cholesky prior: eta = alpha +1 -K/2
-  target+= lkj_corr_cholesky_lpdf(L_Theta | marg_beta_par + 1 - K/2.0);
+  target+= lkj_corr_cholesky_lpdf(L_Theta | prior_Rho_marginal + 1 - K/2.0);
   target+=   student_t_lpdf(sigma_theta | 3,0,2);   // prior on sigma_theta
   // Priors on partial correlations
   for(i in 1:K){
