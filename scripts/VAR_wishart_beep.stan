@@ -11,6 +11,7 @@ data {
   matrix[K,K] prior_Beta_scale; // scales for priors on Beta matrix
   // matrix[K,K] prior_Rho_loc; // locations for priors on partial correlations
   // matrix[K,K] prior_Rho_scale; // scales for priors on partial correlations
+  int<lower=1> prior_Rho_marginal; // prior for partial corr: marginal beta parameter 
 }
 ////////////////////////////////////////////////////////////////////////////////
 transformed data{
@@ -55,7 +56,7 @@ model {
   target+=   std_normal_lpdf(to_vector(Beta_raw));    // prior on Beta
   //target+= student_t_lpdf(mu_Beta | 3,0,2);
   //target+= student_t_lpdf(sigma_Beta | 3,0,2);
-  target+=   inv_wishart_lpdf(Theta | 3 + K - 1, I);  // prior on Cholesky factor
+  target+=   inv_wishart_lpdf(Theta | prior_Rho_marginal + K - 1, I);  // prior on Cholesky factor
   {
     for(t in 2:T){
       if(beep[t] > first_beep){
