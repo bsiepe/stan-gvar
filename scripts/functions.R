@@ -133,7 +133,7 @@ fit_gVAR_stan <-
       prior_Rho_scale <- matrix(sqrt(.5), nrow = K, ncol = K) # uniform prior
       prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
       prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)
-      prior_Rho_marginal <- 1
+      prior_Rho_marginal <- 3
     } else{
       prior_Rho_loc <- priors[["prior_Rho_loc"]]
       prior_Rho_scale <- priors[["prior_Rho_scale"]]
