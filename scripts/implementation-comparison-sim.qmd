@@ -130,7 +130,7 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     n_cores = 1,
     iter_sampling = stan_iter,
     method = "sampling",
-    server = TRUE
+    server = FALSE
   )
   # Convert to array
   stan_arr_lkj <- stan_fit_convert(fit_stan_lkj)
@@ -144,7 +144,7 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     n_cores = 1,
     iter_sampling = stan_iter,
     method = "sampling",
-    server = TRUE
+    server = FALSE
   )
   # Convert to array
   stan_arr_iw <- stan_fit_convert(fit_stan_iw)
@@ -193,6 +193,8 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
     beta_median <- apply(sample_arr$beta, c(1,2), stats::median)
     pcor_mean <- apply(sample_arr[[pcor_name]], c(1, 2), mean)
     pcor_median <- apply(sample_arr[[pcor_name]], c(1,2), stats::median)
+    beta_sd <- apply(sample_arr$beta, c(1, 2), sd)
+    pcor_sd <- apply(sample_arr[[pcor_name]], c(1, 2), sd)
 
     # HDIs
     beta_hdi <- apply(sample_arr$beta, c(1, 2), function(x) bayestestR::hdi(x, .95))
@@ -345,59 +347,44 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
   # use Coda as in tsnet 
   # Define a function to extract and process the MCMC samples
   # Define a function to compute and return the mean effective size
-  compute_mean_ess <- function(fit, iter, burnin) {
+  mean_ess_bggm <- function(fit, iter, burnin) {
     mcmc_samples <- coda::as.mcmc(t(matrix(fit, nvar * nvar, iter - burnin)))
     mean(coda::effectiveSize(mcmc_samples))
   }
 
-  # Define a function to separate the chains again for Stan estimation 
-  split_posterior_samples <- function(posterior_samples_array, num_chains = 4,     num_iterations_per_chain = 500) {
-  array_dimensions <- dim(posterior_samples_array)
-  
-  # Calculate the total number of iterations
-  total_iterations <- array_dimensions[3]
-  
-  # Check if the total number of iterations is divisible by the number of chains
-  if (total_iterations %% num_chains != 0) {
-    stop("Total iterations is not divisible by the number of chains.")
+  mean_ess_stan <- function(stan_fit, n_chains = 4){
+    l_fit <- list()
+    n_iter <- dim(stan_fit)[3]/n_chains
+    l_fit[[1]] <- stan_fit[,, 1:n_iter]
+    l_fit[[2]] <- stan_fit[,, (n_iter+1):(2*n_iter)]
+    l_fit[[3]] <- stan_fit[,, (2*n_iter+1):(3*n_iter)]
+    l_fit[[4]] <- stan_fit[,, (3*n_iter+1):(4*n_iter)]
+    l_fit_mcmc <-lapply(l_fit, function(x){
+      coda::as.mcmc(t(matrix(x, nvar * nvar, n_iter)))
+    })
+    m_ess <- mean(coda::effectiveSize(coda::as.mcmc.list(l_fit_mcmc)))
+    m_ess
   }
-  
-  # Calculate the number of iterations per block
-  iterations_per_block <- total_iterations / num_chains
-  
-  # Reshape the array to combine the chains and iterations
-  reshaped_array <- array(posterior_samples_array, c(array_dimensions[1], array_dimensions[2], total_iterations))
-  
-  # Use matrix indexing to create a list of split arrays
-  split_arrays_list <- lapply(1:num_chains, function(chain) {
-    start_index <- ((chain - 1) * iterations_per_block) + 1
-    end_index <- chain * iterations_per_block
-    return(reshaped_array[chain, , start_index:end_index, drop = FALSE])
-  })
-  
-  return(split_arrays_list)
-}
-  
-  test_split <- split_posterior_samples(results[[1]]$fit_stan_lkj$beta)
+
   
   # Process results for bbgm
   ess_beta_bggm <- mean(sapply(results, function(x) 
-    compute_mean_ess(x$fit_bggm$fit$beta, bggm_iter, burnin)))
+    mean_ess_bggm(x$fit_bggm$fit$beta, bggm_iter, burnin)))
   ess_pcor_bggm <- mean(sapply(results, function(x) 
-    compute_mean_ess(x$fit_bggm$fit$pcors, bggm_iter, burnin)))
+    mean_ess_bggm(x$fit_bggm$fit$pcors, bggm_iter, burnin)))
   
   # Process results for lkj
   n_chains <- 4
   ess_beta_lkj <- mean(sapply(results, function(x) 
-    compute_mean_ess(x$fit_stan_lkj$beta, stan_iter*n_chains, 0)))
+    mean_ess_stan(x$fit_stan_lkj$beta)))
   ess_pcor_lkj <- mean(sapply(results, function(x) 
-    compute_mean_ess(x$fit_stan_lkj$rho, stan_iter*n_chains, 0)))
+    mean_ess_stan(x$fit_stan_lkj$rho)))
   
   # Process results for iw
   ess_beta_iw <- mean(sapply(results, function(x) 
-    compute_mean_ess(x$fit_stan_iw$beta, stan_iter*n_chains, 0)))
+    mean_ess_stan(x$fit_stan_iw$beta)))
   ess_pcor_iw <- mean(sapply(results, function(x) 
-    compute_mean_ess(x$fit_stan_iw$rho, stan_iter*n_chains, 0)))
+    mean_ess_stan(x$fit_stan_iw$rho)))
 
 
   
@@ -430,7 +417,11 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
                      pmad_mean = pmad_mean,
                      pmad_mean.mcse = pmad_mean.mcse,
                      ess_beta_bggm = ess_beta_bggm,
-                     ess_pcor_bggm = ess_pcor_bggm)
+                     ess_pcor_bggm = ess_pcor_bggm,
+                     ess_beta_iw = ess_beta_iw,
+                     ess_pcor_iw = ess_pcor_iw,
+                     ess_beta_lkj = ess_beta_lkj,
+                     ess_pcor_lkj = ess_pcor_lkj)
   
   return(ret_summarise)
 }
@@ -455,7 +446,7 @@ sim_results <- SimDesign::runSimulation(design = df_design,
                                     packages = c("tidyverse", "BGGM", "graphicalVAR", "rstan", "here", "bayestestR"),
                                     # save_results = TRUE,
                                     # ncores = 50,
-                                    debug = "summarise"
+                                    # debug = "analyse"
                                     # filename = "implementation-sim-results.rds",
                                     # save_seeds = TRUE,
                                     )
