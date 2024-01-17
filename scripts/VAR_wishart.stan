@@ -55,7 +55,7 @@ model {
   target+=   std_normal_lpdf(to_vector(Beta_raw));    // prior on Beta
   //target+= student_t_lpdf(mu_Beta | 3,0,2);
   //target+= student_t_lpdf(sigma_Beta | 3,0,2);
-  target+=   inv_wishart_lpdf(Theta | 3 + prior_Rho_marginal - 1, I);  // prior on precision matrix
+  target+=   inv_wishart_lpdf(Theta | prior_Rho_marginal + K - 1, I);  // prior on precision matrix
   {
     for(t in 2:T){
       // BS: What about intercept?
