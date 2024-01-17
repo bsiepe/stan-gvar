@@ -126,21 +126,27 @@ fit_gVAR_stan <-
     K <- ncol(data)
     n_t <- nrow(data)
     
-    # TODO: Need a better check for seperate prior objects
+    
     # Specify Priors
-    if (is.null(priors)) {
-      prior_Rho_loc <- matrix(.5, nrow = K, ncol = K)
-      prior_Rho_scale <- matrix(sqrt(.5), nrow = K, ncol = K) # uniform prior
-      prior_Beta_loc <- matrix(0, nrow = K, ncol = K)
-      prior_Beta_scale <- matrix(.5, nrow = K, ncol = K)
-      prior_Rho_marginal <- 3
-    } else{
-      prior_Rho_loc <- priors[["prior_Rho_loc"]]
-      prior_Rho_scale <- priors[["prior_Rho_scale"]]
-      prior_Beta_loc <- priors[["prior_Beta_loc"]]
-      prior_Beta_scale <- priors[["prior_Beta_scale"]]
-      prior_Rho_marginal <- priors[["prior_Rho_marginal"]]
-    }
+    prior_Beta_loc <- ifelse(is.null(priors[["prior_Beta_loc"]]),
+                             matrix(0, nrow = K, ncol = K),
+                             priors[["prior_Beta_loc"]])
+    prior_Beta_scale <- ifelse(is.null(priors[["prior_Beta_scale"]]),
+                               matrix(.5, nrow = K, ncol = K),
+                               priors[["prior_Beta_scale"]])
+    
+    prior_Rho_loc <- ifelse(is.null(priors[["prior_Rho_loc"]]),
+                            matrix(.5, nrow = K, ncol = K),
+                            priors[["prior_Rho_loc"]])
+    prior_Rho_scale <- ifelse(is.null(priors[["prior_Rho_scale"]]),
+                              matrix(sqrt(.5), nrow = K, ncol = K),# uniform prior
+                              priors[["prior_Rho_scale"]])
+
+    prior_Rho_marginal <- ifelse(is.null(priors[["prior_Rho_marginal"]]),
+                                 3,
+                                 priors[["prior_Rho_marginal"]]) %>% 
+      # Convert SD to delta: SD = 1/(delta+1), delta = (1 / SD) - 1
+      1 / . - 1
     
     # Stan Data
     stan_data <- list(
