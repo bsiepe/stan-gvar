@@ -1,5 +1,5 @@
 ## Overview
-This repository contains code used to experiment with implementing Bayesian GVAR models in the \code{tsnet} package. 
+This repository contains code used to experiment with implementing Bayesian GVAR models in the `tsnet` package. 
 It also contains code to reproduce the simulation study comparing the Stan approach to the BGGM approach in the revised version of the preprint "Bayesian Estimation and Comparison of Idiographic Network Models" by Siepe & Heck (2023) (https://psyarxiv.com/uwfjc/). 
 Start the .Rproj var-compare.Rproj before running the scripts. 
 
