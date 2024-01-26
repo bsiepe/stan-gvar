@@ -130,7 +130,7 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     n_cores = 1,
     iter_sampling = stan_iter,
     method = "sampling",
-    server = FALSE
+    server = TRUE
   )
   # Convert to array
   stan_arr_lkj <- stan_fit_convert(fit_stan_lkj)
@@ -144,7 +144,7 @@ sim_analyse <- function(condition, dat, fixed_objects = NULL) {
     n_cores = 1,
     iter_sampling = stan_iter,
     method = "sampling",
-    server = FALSE
+    server = TRUE
   )
   # Convert to array
   stan_arr_iw <- stan_fit_convert(fit_stan_iw)
@@ -437,24 +437,25 @@ sim_summarise <- function(condition, results, fixed_objects = NULL) {
 df_design <- df_design[1,]
 
 sim_results <- SimDesign::runSimulation(design = df_design, 
-                                    replications = 2, 
+                                    replications = 100, 
                                     generate = sim_generate, 
                                     analyse = sim_analyse, 
                                     summarise = sim_summarise, 
                                     fixed_objects = sim_pars,
                                     # parallel = TRUE,
-                                    packages = c("tidyverse", "BGGM", "graphicalVAR", "rstan", "here", "bayestestR"),
-                                    # save_results = TRUE,
-                                    # ncores = 50,
-                                    # debug = "analyse"
-                                    # filename = "implementation-sim-results.rds",
-                                    # save_seeds = TRUE,
+                                    packages = c("tidyverse", "BGGM", "graphicalVAR", "rstan", "here", "bayestestR", "coda"),
+                                    save_results = TRUE,
+                                    # ncores = 2,
+                                    # debug = "summarise",
+                                    filename = "implementation-sim-results_ess.rds",
+                                    save_seeds = TRUE
                                     )
 SimClean()
 sim_sum <- SimExtract(sim_results, "summarise")
 
-saveRDS(sim_results, file = here("/output/implementation_sim_results.RDS"))
-sim_results <- readRDS(here("output/implementation_sim_results.RDS"))
+saveRDS(sim_results, file ="/home/bjoern/stan-gvar/output/implementation_sim_results_2301.RDS")
+
+sim_results <- readRDS(here("output/implementation_sim_results_2301.RDS"))
 
 
 
@@ -486,10 +487,11 @@ Organize the data into a longer format for plotting. Again, quite ugly.
 ```{r}
 df_sim_res_plot <- sim_results %>% 
   # pivot longer where the column endings after the last underscore are the methods
-  pivot_longer(cols = contains(c("bias", "mse", "pmad")), 
+  pivot_longer(cols = contains(c("bias", "mse", "pmad", "ess")), 
                names_to = "pm", 
                values_to = "value") %>% 
-  filter(!str_detect(pm, "pmad")) %>% 
+  filter(!str_detect(pm, "pmad")) %>%
+  filter(!str_detect(pm, "ess")) %>%
   # separate pm column 
   separate(pm, into = c("stat", "matrix", "method"), sep = "_") %>% 
   pivot_wider(names_from = stat, values_from = value) %>% 
@@ -545,7 +547,7 @@ ls_plots[[1]] <-
   theme(panel.grid.major.x = element_blank(),
         axis.line = element_line(colour = "#6d6d6e"),
         strip.text.y = element_blank())+
-  scale_y_continuous(limits = c(0,7), expand = c(0,0))
+  scale_y_continuous(limits = c(0,.2), expand = c(0,0))
 
 ls_plots[[2]] <- 
   l_sim_res[[2]] %>%
@@ -566,16 +568,91 @@ ls_plots[[2]] <-
   geom_vline(colour = "#F3F4F5", xintercept = seq(1.5, 3, 1))+
   theme(panel.grid.major.x = element_blank(),
         axis.line = element_line(colour = "#6d6d6e"))+
-  scale_y_continuous(limits = c(0,3), expand = c(0,0))
+  scale_y_continuous(limits = c(0,.1), expand = c(0,0))
 
 
 plot_eval_both <- patchwork::wrap_plots(ls_plots) + 
   patchwork::plot_layout(guides = "collect") & theme(legend.position = "top")
   
-ggsave(here("figures/plot_eval_both_stan_sim.pdf"), plot_eval_both, 
+ggsave("/home/bjoern/stan-gvar/figures/plot_eval_both_stan_sim.pdf", plot_eval_both, 
+       width = 9, height = 6, device = "pdf")
+
+```
+
+## Explicit difference between methods
+
+```{r}
+sim_results %>% 
+  # pivot longer where the column endings after the last underscore are the methods
+  pivot_longer(cols = contains(c("bias", "mse", "pmad", "ess")), 
+               names_to = "pm", 
+               values_to = "value") %>% 
+  filter(str_detect(pm, "pmad")) %>% 
+  muteat()
+  
+  # separate pm column 
+  separate(pm, into = c("stat", "matrix", "method"), sep = "_") %>% 
+  mutate(tp = as.factor(tp),
+         dgp = as.factor(dgp)) %>%
+  mutate(dgp = fct_recode(as_factor(as.character(dgp)), !!!dgp_levels)) %>%
+  # mutate the method column to caps lock
+  mutate(method = str_to_upper(method)) %>%
+  mutate(matrix = as.factor(case_match(matrix, 
+                             "beta" ~ "Temporal", 
+                             "pcor" ~ "Contemporaneous")))
+```
+
+
+
+
+## Convergence
+
+Effective sample size: 
+```{r}
+plot_ess <- sim_results %>% 
+  # pivot longer where the column endings after the last underscore are the methods
+  pivot_longer(cols = contains(c("bias", "mse", "pmad", "ess")), 
+               names_to = "pm", 
+               values_to = "value") %>% 
+  filter(str_detect(pm, "ess")) %>% 
+  # separate pm column 
+  separate(pm, into = c("stat", "matrix", "method"), sep = "_") %>% 
+  mutate(tp = as.factor(tp),
+         dgp = as.factor(dgp)) %>%
+  mutate(dgp = fct_recode(as_factor(as.character(dgp)), !!!dgp_levels)) %>%
+  # mutate the method column to caps lock
+  mutate(method = str_to_upper(method)) %>%
+  mutate(matrix = as.factor(case_match(matrix, 
+                             "beta" ~ "Temporal", 
+                             "pcor" ~ "Contemporaneous"))) %>%
+  mutate(value = if_else(method == "BGGM", value/50000, value/2000)) %>% 
+  ggplot(aes(x = tp, y = value, fill = method, color = method)) + 
+  geom_point()+
+  ggh4x::facet_nested( dgp ~ matrix,
+                       axes = TRUE,
+                       remove_labels = TRUE)+
+  theme_compare()+
+  scale_fill_manual(values = okabe_fill_enh)+
+  scale_color_manual(values = okabe_color_enh)+
+  labs(x = "Time Points", y = "", fill = "Method", color = "Method")+
+  # add vertical line between factors, remove vertical gridline
+  geom_vline(colour = "#F3F4F5", xintercept = seq(1.5, 3, 1))+
+  theme(panel.grid.major.x = element_blank(),
+        axis.line = element_line(colour = "#6d6d6e"))+
+  scale_y_continuous(expand = c(0,0), 
+                     breaks = c(0, 0.5, 1, 1.5),
+                     limits = c(-0.01, 1.6))+
+  labs(title = "",
+       y = "Relative ESS")
+
+ggsave("/home/bjoern/stan-gvar/figures/plot_ess_stan_sim.pdf", plot_ess, 
        width = 9, height = 6, device = "pdf")
 
 ```
 
 
-## Convergence
+
+
+
+
+
