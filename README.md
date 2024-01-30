@@ -4,8 +4,7 @@ It also contains code to reproduce the simulation study comparing the Stan appro
 Start the .Rproj var-compare.Rproj before running the scripts. 
 
 ## Scripts
-The file `implementation-comparison-sim.qmd` contains the code for the implementation comparison simulation study. 
-
+The file `implementation-comparison-sim.qmd` contains the code for the implementation comparison simulation study. The `.stan` files have been updated and implemented in the [tsnet](https://doi.org/10.31234/osf.io/dvj8g) package.
 
 ## MPlus version
 We also implemented a generic MPlus version of Bayesian GVAR models. The wrapper function is included in `scripts\functions.R`. 
